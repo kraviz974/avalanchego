@@ -27,8 +27,10 @@ var _ = ginkgo.Describe("[Banff]", func() {
 
 func TestCustomAssetTransfer(
 	tc tests.TestContext,
+	_ uint32,
 	wallet primary.Wallet,
 	ownerAddress ids.ShortID,
+	_ string,
 ) {
 	require := require.New(tc)
 

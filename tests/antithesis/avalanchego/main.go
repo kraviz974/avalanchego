@@ -21,6 +21,7 @@ import (
 	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/antithesis"
 	"github.com/ava-labs/avalanchego/tests/e2e/banff"
+	"github.com/ava-labs/avalanchego/tests/e2e/p"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/utils/constants"
@@ -220,7 +221,7 @@ func (w *workload) executeTest(ctx context.Context) {
 	defer tc.Recover(false /* rethrow */)
 	require := require.New(tc)
 
-	val, err := rand.Int(rand.Reader, big.NewInt(6))
+	val, err := rand.Int(rand.Reader, big.NewInt(7))
 	require.NoError(err, "failed to read randomness")
 
 	// TODO(marun)
@@ -247,6 +248,12 @@ func (w *workload) executeTest(ctx context.Context) {
 		addr, _ := w.addrs.Peek()
 		banff.TestCustomAssetTransfer(tc, w.wallet, addr)
 	case 6:
+		w.log.Info("executing p.TestCreateUpdateL1Validators")
+		addr, _ := w.addrs.Peek()
+		// TODO(marun) Discover this network ID dynamically
+		networkID := 12345
+		p.TestCreateUpdateL1Validators(tc, networkID, w.wallet, addr, w.uris[0])
+	case 7:
 		w.log.Info("sleeping")
 	}
 }

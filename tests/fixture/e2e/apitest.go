@@ -10,7 +10,13 @@ import (
 )
 
 // TODO(marun) What else does a test need? e.g. node URIs?
-type APITestFunction func(tc tests.TestContext, wallet primary.Wallet, ownerAddress ids.ShortID)
+type APITestFunction func(
+	tc tests.TestContext,
+	networkID uint32,
+	wallet primary.Wallet,
+	ownerAddress ids.ShortID,
+	nodeURI string,
+)
 
 // ExecuteAPITest executes a test primary dependency is being able to access the API of one or
 // more avalanchego nodes.
@@ -18,7 +24,9 @@ func ExecuteAPITest(apiTest APITestFunction) {
 	tc := NewTestContext()
 	env := GetEnv(tc)
 	keychain := env.NewKeychain()
-	wallet := NewWallet(tc, keychain, env.GetRandomNodeURI())
-	apiTest(tc, *wallet, keychain.Keys[0].Address())
+	uri := env.GetRandomNodeURI()
+	wallet := NewWallet(tc, keychain, uri)
+	networkID := env.GetNetwork().NetworkID
+	apiTest(tc, networkID, *wallet, keychain.Keys[0].Address(), uri.URI)
 	_ = CheckBootstrapIsPossible(tc, env.GetNetwork())
 }

@@ -108,7 +108,7 @@ func initComposeConfig(
 	}
 	composePath := filepath.Join(targetPath, "docker-compose.yml")
 	if err := os.WriteFile(composePath, bytes, perms.ReadWrite); err != nil {
-		return fmt.Errorf("failed to write genesis: %w", err)
+		return fmt.Errorf("failed to write compose file: %w", err)
 	}
 
 	// Create the volume paths
