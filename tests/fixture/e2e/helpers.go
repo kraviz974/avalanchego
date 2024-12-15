@@ -137,7 +137,11 @@ func AddEphemeralNode(tc tests.TestContext, network *tmpnet.Network, flags tmpne
 	require := require.New(tc)
 
 	node := tmpnet.NewEphemeralNode(flags)
-	require.NoError(network.StartNode(tc.DefaultContext(), tc.Log(), node))
+
+	// Assume the presence of bootstrap IDs indicates the node is already configured for bootstrap
+	_, configuredForBootstrap := flags[config.BootstrapIDsKey]
+
+	require.NoError(network.StartNodeWithDiscover(tc.DefaultContext(), tc.Log(), node, !configuredForBootstrap))
 
 	tc.DeferCleanup(func() {
 		tc.Log().Info("shutting down ephemeral node",

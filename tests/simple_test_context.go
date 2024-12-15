@@ -67,6 +67,10 @@ func (*SimpleTestContext) FailNow() {
 	panic(failNowMessage)
 }
 
+func (*SimpleTestContext) Abort() {
+	panic(abortMessage)
+}
+
 // RecoverAndExit is intended to be deferred by the caller to ensure
 // cleanup functions are called before exit or re-panic (in the event
 // of an unexpected panic or a panic during cleanup).
@@ -239,5 +243,5 @@ func (tc *SimpleTestContext) RequireNoError(err error, msgAndArgs ...interface{}
 	tc.Log().Warn("Saw a potentially recoverable error", fields...)
 
 	// Signal an abort condition to halt further execution
-	panic(abortMessage)
+	tc.Abort()
 }

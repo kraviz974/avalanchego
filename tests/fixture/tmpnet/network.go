@@ -470,8 +470,12 @@ func (n *Network) Bootstrap(ctx context.Context, log logging.Logger) error {
 	return n.StartNodes(ctx, log, n.Nodes[1:]...)
 }
 
-// Starts the provided node after configuring it for the network.
 func (n *Network) StartNode(ctx context.Context, log logging.Logger, node *Node) error {
+	return n.StartNodeWithDiscover(ctx, log, node, true)
+}
+
+// Starts the provided node after configuring it for the network.
+func (n *Network) StartNodeWithDiscover(ctx context.Context, log logging.Logger, node *Node, discoverBootstrap bool) error {
 	// This check is duplicative for a network that is starting, but ensures
 	// that individual node start/restart won't fail due to missing binaries.
 	pluginDir, err := n.getPluginDir()
@@ -488,11 +492,14 @@ func (n *Network) StartNode(ctx context.Context, log logging.Logger, node *Node)
 		return err
 	}
 
-	bootstrapIPs, bootstrapIDs, err := n.getBootstrapIPsAndIDs(node)
-	if err != nil {
-		return err
+	if discoverBootstrap {
+		// This needs to be specialized in the case of a fixed set of bootstrap IDs
+		bootstrapIPs, bootstrapIDs, err := n.getBootstrapIPsAndIDs(node)
+		if err != nil {
+			return err
+		}
+		node.SetNetworkingConfig(bootstrapIDs, bootstrapIPs)
 	}
-	node.SetNetworkingConfig(bootstrapIDs, bootstrapIPs)
 
 	if err := node.Write(); err != nil {
 		return err

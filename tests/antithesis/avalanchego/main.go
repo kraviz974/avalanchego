@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -15,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/ava-labs/avalanchego/api/info"
+	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/genesis"
 	"github.com/ava-labs/avalanchego/ids"
@@ -37,6 +40,7 @@ import (
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 
+	pchain_e2e "github.com/ava-labs/avalanchego/tests/e2e/p"
 	timerpkg "github.com/ava-labs/avalanchego/utils/timer"
 	xtxs "github.com/ava-labs/avalanchego/vms/avm/txs"
 	ptxs "github.com/ava-labs/avalanchego/vms/platformvm/txs"
@@ -46,6 +50,46 @@ import (
 const NumKeys = 5
 
 // TODO(marun) Extract the common elements of test execution for reuse across test setups
+
+// getBootstrapIPAndID retrieves the node ID and IP pairs of validators that
+// respond to API requests.
+func getBootstrapIDsAndIPs(tc tests.TestContext, uris []string) ([]string, []string) {
+	bootstrapIDs := make([]string, len(uris))
+	bootstrapIPs := make([]string, len(uris))
+	for _, uri := range uris {
+		infoClient := info.NewClient(uri)
+		nodeID, _, err := infoClient.GetNodeID(tc.DefaultContext())
+		if err != nil {
+			tc.Log().Warn("failed to determine node ID for uri",
+				zap.String("uri", uri),
+				zap.Error(err),
+			)
+			continue
+		}
+		bootstrapIDs = append(bootstrapIDs, nodeID.String())
+		bootstrapIPs = append(bootstrapIPs, fmt.Sprintf("%s:%d", strings.TrimPrefix(uri, "https://"), config.DefaultStakingPort))
+	}
+	return bootstrapIDs, bootstrapIPs
+}
+
+func AddEphemeralNode(tc *tests.SimpleTestContext, network *tmpnet.Network, flags tmpnet.FlagsMap) *tmpnet.Node {
+	// TODO(marun) Supply the path via a configuration flag?
+	// TODO(marun) Somehow provide the URIs
+	uris := []string{}
+
+	network, err := tmpnet.ReadNetwork("")
+	require.NoError(tc, err)
+
+	// Configure bootstrap for the uris
+	bootstrapIPs, bootstrapIDs := getBootstrapIDsAndIPs(tc, uris)
+	if len(bootstrapIPs) == 0 {
+		tc.Log().Warn("unable to determine bootstrap IDs")
+		tc.Abort()
+	}
+	tmpnet.SetNetworkingConfig(flags, bootstrapIDs, bootstrapIPs)
+
+	return e2e.AddEphemeralNode(tc, network, flags)
+}
 
 func main() {
 	// TODO(marun) Support choosing the log format
@@ -230,7 +274,7 @@ func (w *workload) executeTest(ctx context.Context) {
 	defer tc.Recover(false /* rethrow */)
 	require := require.New(tc)
 
-	val, err := rand.Int(rand.Reader, big.NewInt(6))
+	val, err := rand.Int(rand.Reader, big.NewInt(7))
 	require.NoError(err, "failed to read randomness")
 
 	// TODO(marun)
@@ -257,6 +301,13 @@ func (w *workload) executeTest(ctx context.Context) {
 		addr, _ := w.addrs.Peek()
 		banff.TestCustomAssetTransfer(tc, *w.wallet, addr)
 	case 6:
+		w.log.Info("executing p.CreateAndUpdateL1Validators")
+		addr, _ := w.addrs.Peek()
+		// TODO(marun) Enable AddEphemeralNode
+		// - Need to figure out how to get the bootstrap node id and ip
+		// - Need to figure out how to vary the behavior between e2e and antithesis.
+		pchain_e2e.CreateAndUpdateL1Validators(tc, *w.wallet, addr)
+	case 7:
 		w.log.Info("sleeping")
 	}
 }

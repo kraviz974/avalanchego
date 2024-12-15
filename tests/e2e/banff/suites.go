@@ -6,7 +6,6 @@ package banff
 
 import (
 	"github.com/onsi/ginkgo/v2"
-	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests"
@@ -30,8 +29,6 @@ func TestCustomAssetTransfer(
 	wallet primary.Wallet,
 	ownerAddress ids.ShortID,
 ) {
-	require := require.New(tc)
-
 	// Get the P-chain and the X-chain wallets
 	pWallet := wallet.P()
 	xWallet := wallet.X()

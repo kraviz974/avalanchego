@@ -39,6 +39,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
+	"github.com/ava-labs/avalanchego/wallet/subnet/primary"
 
 	p2pmessage "github.com/ava-labs/avalanchego/message"
 	p2psdk "github.com/ava-labs/avalanchego/network/p2p"
@@ -64,7 +65,16 @@ const (
 )
 
 var _ = e2e.DescribePChain("[L1]", func() {
-	tc := e2e.NewTestContext()
+	ginkgo.It("creates and updates L1 validators", func() {
+		e2e.ExecuteAPITest(CreateAndUpdateL1Validators)
+	})
+})
+
+func CreateAndUpdateL1Validators(
+	tc tests.TestContext,
+	wallet primary.Wallet,
+	ownerAddress ids.ShortID,
+) {
 	require := require.New(tc)
 
 	ginkgo.It("creates and updates L1 validators", func() {
@@ -774,7 +784,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 
 		_ = e2e.CheckBootstrapIsPossible(tc, env.GetNetwork())
 	})
-})
+}
 
 func wrapWarpSignatureRequest(
 	msg *warp.UnsignedMessage,
