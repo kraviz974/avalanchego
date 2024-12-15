@@ -8,13 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"syscall"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/ava-labs/avalanchego/api/health"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
+	"github.com/ava-labs/avalanchego/utils/logging"
 )
 
 const (
@@ -29,25 +31,14 @@ func CheckNodeHealth(ctx context.Context, uri string) (*health.APIReply, error) 
 	if err == nil {
 		return healthReply, nil
 	}
-
-	switch t := err.(type) {
-	case *net.OpError:
-		if t.Op == "read" {
-			// Connection refused - potentially recoverable
-			return nil, err
-		}
-	case syscall.Errno:
-		if t == syscall.ECONNREFUSED {
-			// Connection refused - potentially recoverable
-			return nil, err
-		}
+	if tests.IsPotentiallyRecoverable(err) {
+		return nil, err
 	}
-	// Assume all other errors are not recoverable
 	return nil, fmt.Errorf("%w: %w", ErrUnrecoverableNodeHealthCheck, err)
 }
 
 // WaitForHealthy blocks until Node.IsHealthy returns true or an error (including context timeout) is observed.
-func WaitForHealthy(ctx context.Context, node *Node) error {
+func WaitForHealthy(ctx context.Context, log logging.Logger, node *Node) error {
 	if _, ok := ctx.Deadline(); !ok {
 		return fmt.Errorf("unable to wait for health for node %q with a context without a deadline", node.NodeID)
 	}
@@ -61,7 +52,10 @@ func WaitForHealthy(ctx context.Context, node *Node) error {
 			return fmt.Errorf("%w for node %q", err, node.NodeID)
 		case err != nil:
 			// Error is recoverable
-			// TODO(marun) Log the error to aid in troubleshooting once a logger is available
+			log.Debug("Failed to query node health",
+				zap.Stringer("nodeID", node.NodeID),
+				zap.Error(err),
+			)
 			continue
 		case healthy:
 			return nil

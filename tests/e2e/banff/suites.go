@@ -63,7 +63,7 @@ func TestCustomAssetTransfer(
 			},
 			tc.WithDefaultContext(),
 		)
-		require.NoError(err)
+		tc.RequireNoError(err)
 		assetID = tx.ID()
 	})
 
@@ -83,7 +83,7 @@ func TestCustomAssetTransfer(
 			},
 			tc.WithDefaultContext(),
 		)
-		require.NoError(err)
+		tc.RequireNoError(err)
 	})
 
 	tc.By("importing new asset from X-chain on the P-chain", func() {
@@ -92,7 +92,7 @@ func TestCustomAssetTransfer(
 			owner,
 			tc.WithDefaultContext(),
 		)
-		require.NoError(err)
+		tc.RequireNoError(err)
 	})
 
 	tc.By("exporting asset from P-chain to the X-chain", func() {
@@ -111,7 +111,7 @@ func TestCustomAssetTransfer(
 			},
 			tc.WithDefaultContext(),
 		)
-		require.NoError(err)
+		tc.RequireNoError(err)
 	})
 
 	tc.By("importing asset from P-chain on the X-chain", func() {
@@ -120,6 +120,6 @@ func TestCustomAssetTransfer(
 			owner,
 			tc.WithDefaultContext(),
 		)
-		require.NoError(err)
+		tc.RequireNoError(err)
 	})
 }

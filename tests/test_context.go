@@ -36,4 +36,8 @@ type TestContext interface {
 
 	// Ensures compatibility with require.Eventually
 	Eventually(condition func() bool, waitFor time.Duration, tick time.Duration, msg string)
+
+	// Wrapper for require.NoError to allow for specialized behavior
+	// in a continuous testing environment (e.g. Antithesis).
+	RequireNoError(err error, msgAndArgs ...interface{})
 }

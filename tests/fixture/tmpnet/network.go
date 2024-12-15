@@ -536,7 +536,7 @@ func (n *Network) RestartNode(ctx context.Context, log logging.Logger, node *Nod
 	log.Info("waiting for node to report healthy",
 		zap.Stringer("nodeID", node.NodeID),
 	)
-	return WaitForHealthy(ctx, node)
+	return WaitForHealthy(ctx, log, node)
 }
 
 // Stops all nodes in the network.

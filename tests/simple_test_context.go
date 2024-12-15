@@ -18,7 +18,10 @@ import (
 
 var _ TestContext = (*SimpleTestContext)(nil)
 
-const failNowMessage = "SimpleTestContext.FailNow called"
+const (
+	failNowMessage = "SimpleTestContext.FailNow called"
+	abortMessage   = "SimpleTestContext.Abort called"
+)
 
 type ErrorfHandler func(format string, args ...any)
 
@@ -74,15 +77,18 @@ func (tc *SimpleTestContext) RecoverAndExit() {
 	var panicData any
 	if r := recover(); r != nil {
 		errorString, ok := r.(string)
-		if !ok || errorString != failNowMessage {
+		if !ok || errorString != failNowMessage || errorString != abortMessage {
 			tc.log.Error("unexpected panic",
 				zap.Any("panic", r),
 			)
+			// Ignore aborts since they are just a way to exit early
 			if tc.panicHandler != nil {
 				tc.panicHandler(r)
 			}
 			// Retain the panic data to raise after cleanup
 			panicData = r
+		} else if errorString == abortMessage {
+			// Ignore
 		} else {
 			// Ensure a non-zero exit due to an assertion failure
 			exitNonZero = true
@@ -111,7 +117,7 @@ func (tc *SimpleTestContext) Recover(rethrow bool) {
 	var panicData any
 	if panicData := recover(); panicData != nil {
 		errorString, ok := panicData.(string)
-		if !ok || errorString != failNowMessage {
+		if !ok || errorString != failNowMessage || errorString != abortMessage {
 			tc.log.Error("unexpected panic",
 				zap.Any("panic", panicData),
 			)
@@ -200,4 +206,38 @@ func (tc *SimpleTestContext) SetDefaultContextParent(parent context.Context) {
 
 func (tc *SimpleTestContext) Eventually(condition func() bool, waitFor time.Duration, tick time.Duration, msg string) {
 	require.Eventually(tc, condition, waitFor, tick, msg)
+}
+
+func (tc *SimpleTestContext) RequireNoError(err error, msgAndArgs ...interface{}) {
+	if err == nil {
+		return
+	}
+
+	if !IsPotentiallyRecoverable(err) {
+		// Perform a regular assertion
+		require.NoError(tc, err)
+		return
+	}
+
+	// Log the error
+	var msg string
+	if len(msgAndArgs) >= 1 {
+		if msgString, ok := msgAndArgs[0].(string); ok {
+			msg = msgString
+		} else {
+			msg = fmt.Sprintf("%+v", msgAndArgs[0])
+		}
+	} else if len(msgAndArgs) > 1 {
+		msg = fmt.Sprintf(msgAndArgs[0].(string), msgAndArgs[1:]...)
+	}
+	fields := []zap.Field{
+		zap.Error(err),
+	}
+	if len(msg) > 0 {
+		fields = append(fields, zap.String("msg", msg))
+	}
+	tc.Log().Warn("Saw a potentially recoverable error", fields...)
+
+	// Signal an abort condition to halt further execution
+	panic(abortMessage)
 }

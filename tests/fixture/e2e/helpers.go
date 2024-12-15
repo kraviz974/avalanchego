@@ -22,6 +22,7 @@ import (
 	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs/fee"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/chain/p/builder"
@@ -61,7 +62,11 @@ func NewPrivateKey(tc tests.TestContext) *secp256k1.PrivateKey {
 
 // Create a new wallet for the provided keychain against the specified node URI.
 func NewWallet(tc tests.TestContext, keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI) *primary.Wallet {
-	tc.Log().Info("initializing a new wallet",
+	return NewWalletWithLog(tc, keychain, nodeURI, tc.Log())
+}
+
+func NewWalletWithLog(tc tests.TestContext, keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI, log logging.Logger) *primary.Wallet {
+	log.Info("initializing a new wallet",
 		zap.Stringer("nodeID", nodeURI.NodeID),
 		zap.String("URI", nodeURI.URI),
 	)
@@ -146,11 +151,11 @@ func AddEphemeralNode(tc tests.TestContext, network *tmpnet.Network, flags tmpne
 }
 
 // Wait for the given node to report healthy.
-func WaitForHealthy(t require.TestingT, node *tmpnet.Node) {
+func WaitForHealthy(tc tests.TestContext, node *tmpnet.Node) {
 	// Need to use explicit context (vs DefaultContext()) to support use with DeferCleanup
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancel()
-	require.NoError(t, tmpnet.WaitForHealthy(ctx, node))
+	require.NoError(tc, tmpnet.WaitForHealthy(ctx, tc.Log(), node))
 }
 
 // Sends an eth transaction, waits for the transaction receipt to be issued
@@ -234,7 +239,7 @@ func CheckBootstrapIsPossible(tc tests.TestContext, network *tmpnet.Network) *tm
 	})
 
 	// Check that the node becomes healthy within timeout
-	require.NoError(tmpnet.WaitForHealthy(tc.DefaultContext(), node))
+	require.NoError(tmpnet.WaitForHealthy(tc.DefaultContext(), tc.Log(), node))
 
 	// Ensure that the primary validators are still healthy
 	for _, node := range network.Nodes {

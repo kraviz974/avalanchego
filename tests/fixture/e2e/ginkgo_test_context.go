@@ -125,3 +125,7 @@ func (*GinkgoTestContext) Eventually(condition func() bool, waitFor time.Duratio
 		}
 	}
 }
+
+func (*GinkgoTestContext) RequireNoError(err error, msgAndArgs ...interface{}) {
+	require.NoError(ginkgo.GinkgoT(), err, msgAndArgs...)
+}

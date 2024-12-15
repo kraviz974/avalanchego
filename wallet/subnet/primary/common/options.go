@@ -79,6 +79,10 @@ type Options struct {
 
 	postIssuanceHandler     TxIssuanceHandler
 	postConfirmationHandler TxConfirmationHandler
+
+	verificationURIs []string
+
+	log logging.Logger
 }
 
 func NewOptions(ops []Option) *Options {
@@ -168,6 +172,17 @@ func (o *Options) PostIssuanceHandler() TxIssuanceHandler {
 
 func (o *Options) PostConfirmationHandler() TxConfirmationHandler {
 	return o.postConfirmationHandler
+}
+
+func (o *Options) VerificationURIs() []string {
+	return o.verificationURIs
+}
+
+func (o *Options) Log() logging.Logger {
+	if o.log == nil {
+		return logging.NoLog{}
+	}
+	return o.log
 }
 
 func WithContext(ctx context.Context) Option {
@@ -267,5 +282,17 @@ func WithLoggedIssuranceAndConfirmation(log logging.Logger) Option {
 				)
 			},
 		)(o)
+	}
+}
+
+func WithVerificationURIs(uris []string) Option {
+	return func(o *Options) {
+		o.verificationURIs = uris
+	}
+}
+
+func WithLog(log logging.Logger) Option {
+	return func(o *Options) {
+		o.log = log
 	}
 }

@@ -164,9 +164,11 @@ func (w *wallet) IssueAtomicTx(
 		return w.Backend.AcceptAtomicTx(ctx, tx)
 	}
 
+	// TODO(marun) Support awaiting for a set of validation URIs provided via options
 	if err := awaitTxAccepted(w.avaxClient, ctx, txID, ops.PollFrequency()); err != nil {
 		return err
 	}
+
 	totalDuration := time.Since(startTime)
 	issuanceToConfirmationDuration := totalDuration - issuanceDuration
 

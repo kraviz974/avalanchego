@@ -74,7 +74,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 		tc.By("verifying Etna is activated", func() {
 			infoClient := info.NewClient(nodeURI.URI)
 			upgrades, err := infoClient.Upgrades(tc.DefaultContext())
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			now := time.Now()
 			if !upgrades.IsEtnaActivated(now) {
@@ -98,7 +98,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 
 		tc.By("creating the chain genesis")
 		genesisKey, err := secp256k1.NewPrivateKey()
-		require.NoError(err)
+		tc.RequireNoError(err)
 
 		genesisBytes, err := genesis.Codec.Marshal(genesis.CodecVersion, &genesis.Genesis{
 			Timestamp: time.Now().Unix(),
@@ -109,7 +109,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 				},
 			},
 		})
-		require.NoError(err)
+		tc.RequireNoError(err)
 
 		var subnetID ids.ID
 		tc.By("issuing a CreateSubnetTx", func() {
@@ -117,7 +117,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 				owner,
 				tc.WithDefaultContext(),
 			)
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			subnetID = subnetTx.ID()
 		})
@@ -126,7 +126,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 			require.NotEqual(constants.PrimaryNetworkID, subnetID)
 
 			subnet, err := pClient.GetSubnet(tc.DefaultContext(), subnetID)
-			require.NoError(err)
+			tc.RequireNoError(err)
 			require.Equal(
 				platformvm.GetSubnetClientResponse{
 					IsPermissioned: true,
@@ -149,23 +149,23 @@ var _ = e2e.DescribePChain("[L1]", func() {
 				"No Permissions",
 				tc.WithDefaultContext(),
 			)
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			chainID = chainTx.ID()
 		})
 
 		verifyValidatorSet := func(expectedValidators map[ids.NodeID]*snowvalidators.GetValidatorOutput) {
 			height, err := pClient.GetHeight(tc.DefaultContext())
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			subnetValidators, err := pClient.GetValidatorsAt(tc.DefaultContext(), subnetID, platformapi.Height(height))
-			require.NoError(err)
+			tc.RequireNoError(err)
 			require.Equal(expectedValidators, subnetValidators)
 		}
 		tc.By("verifying the Permissioned Subnet is configured as expected", func() {
 			tc.By("verifying the subnet reports as permissioned", func() {
 				subnet, err := pClient.GetSubnet(tc.DefaultContext(), subnetID)
-				require.NoError(err)
+				tc.RequireNoError(err)
 				require.Equal(
 					platformvm.GetSubnetClientResponse{
 						IsPermissioned: true,
@@ -189,10 +189,10 @@ var _ = e2e.DescribePChain("[L1]", func() {
 		})
 
 		genesisNodePoP, err := subnetGenesisNode.GetProofOfPossession()
-		require.NoError(err)
+		tc.RequireNoError(err)
 
 		genesisNodePK, err := bls.PublicKeyFromCompressedBytes(genesisNodePoP.PublicKey[:])
-		require.NoError(err)
+		tc.RequireNoError(err)
 
 		tc.By("connecting to the genesis validator")
 		var (
@@ -212,7 +212,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 				genesisPeerMessages.PushRight(m)
 			}),
 		)
-		require.NoError(err)
+		tc.RequireNoError(err)
 
 		address := []byte{}
 		tc.By("issuing a ConvertSubnetToL1Tx", func() {
@@ -230,7 +230,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 				},
 				tc.WithDefaultContext(),
 			)
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			tc.By("ensuring the genesis peer has accepted the tx at "+subnetGenesisNode.URI, func() {
 				var (
@@ -263,11 +263,11 @@ var _ = e2e.DescribePChain("[L1]", func() {
 					},
 				},
 			})
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			tc.By("verifying the subnet reports as being converted", func() {
 				subnet, err := pClient.GetSubnet(tc.DefaultContext(), subnetID)
-				require.NoError(err)
+				tc.RequireNoError(err)
 				require.Equal(
 					platformvm.GetSubnetClientResponse{
 						IsPermissioned: false,
@@ -295,7 +295,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 
 			tc.By("verifying the L1 validator can be fetched", func() {
 				l1Validator, _, err := pClient.GetL1Validator(tc.DefaultContext(), genesisValidationID)
-				require.NoError(err)
+				tc.RequireNoError(err)
 				require.LessOrEqual(l1Validator.Balance, genesisBalance)
 
 				l1Validator.StartTime = 0
@@ -335,14 +335,15 @@ var _ = e2e.DescribePChain("[L1]", func() {
 						unsignedSubnetToL1Conversion,
 						subnetID[:],
 					)
-					require.NoError(err)
+					tc.RequireNoError(err)
 
+					// TODO(marun) Need to handle the case of this call failing due to a transient failure
 					require.True(genesisPeer.Send(tc.DefaultContext(), registerL1ValidatorRequest))
 				})
 
 				tc.By("getting the signature response", func() {
 					signature, ok, err := findMessage(genesisPeerMessages, unwrapWarpSignature)
-					require.NoError(err)
+					tc.RequireNoError(err)
 					require.True(ok)
 					require.True(bls.Verify(genesisNodePK, signature, unsignedSubnetToL1Conversion.Bytes()))
 				})
@@ -362,10 +363,10 @@ var _ = e2e.DescribePChain("[L1]", func() {
 		})
 
 		registerNodePoP, err := subnetRegisterNode.GetProofOfPossession()
-		require.NoError(err)
+		tc.RequireNoError(err)
 
 		registerNodePK, err := bls.PublicKeyFromCompressedBytes(registerNodePoP.PublicKey[:])
-		require.NoError(err)
+		tc.RequireNoError(err)
 
 		tc.By("ensuring the subnet nodes are healthy", func() {
 			e2e.WaitForHealthy(tc, subnetGenesisNode)
@@ -383,7 +384,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 			warpmessage.PChainOwner{},
 			registerWeight,
 		)
-		require.NoError(err)
+		tc.RequireNoError(err)
 		registerValidationID := registerL1ValidatorMessage.ValidationID()
 
 		tc.By("registering the validator", func() {
@@ -402,14 +403,14 @@ var _ = e2e.DescribePChain("[L1]", func() {
 					unsignedRegisterL1Validator,
 					nil,
 				)
-				require.NoError(err)
+				tc.RequireNoError(err)
 
 				require.True(genesisPeer.Send(tc.DefaultContext(), registerL1ValidatorRequest))
 			})
 
 			tc.By("getting the signature response")
 			registerL1ValidatorSignature, ok, err := findMessage(genesisPeerMessages, unwrapWarpSignature)
-			require.NoError(err)
+			tc.RequireNoError(err)
 			require.True(ok)
 
 			tc.By("creating the signed warp message to register the validator")
@@ -422,7 +423,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 					),
 				},
 			)
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			tc.By("issuing a RegisterL1ValidatorTx", func() {
 				tx, err := pWallet.IssueRegisterL1ValidatorTx(
@@ -430,7 +431,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 					registerNodePoP.ProofOfPossession,
 					registerL1Validator.Bytes(),
 				)
-				require.NoError(err)
+				tc.RequireNoError(err)
 
 				tc.By("ensuring the genesis peer has accepted the tx at "+subnetGenesisNode.URI, func() {
 					var (
@@ -467,7 +468,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 
 			tc.By("verifying the L1 validator can be fetched", func() {
 				l1Validator, _, err := pClient.GetL1Validator(tc.DefaultContext(), registerValidationID)
-				require.NoError(err)
+				tc.RequireNoError(err)
 
 				l1Validator.StartTime = 0
 				require.Equal(
@@ -507,14 +508,14 @@ var _ = e2e.DescribePChain("[L1]", func() {
 						unsignedL1ValidatorRegistration,
 						nil,
 					)
-					require.NoError(err)
+					tc.RequireNoError(err)
 
 					require.True(genesisPeer.Send(tc.DefaultContext(), l1ValidatorRegistrationRequest))
 				})
 
 				tc.By("getting the signature response", func() {
 					signature, ok, err := findMessage(genesisPeerMessages, unwrapWarpSignature)
-					require.NoError(err)
+					tc.RequireNoError(err)
 					require.True(ok)
 					require.True(bls.Verify(genesisNodePK, signature, unsignedL1ValidatorRegistration.Bytes()))
 				})
@@ -542,14 +543,14 @@ var _ = e2e.DescribePChain("[L1]", func() {
 					unsignedL1ValidatorWeight,
 					nil,
 				)
-				require.NoError(err)
+				tc.RequireNoError(err)
 
 				require.True(genesisPeer.Send(tc.DefaultContext(), setL1ValidatorWeightRequest))
 			})
 
 			tc.By("getting the signature response")
 			setL1ValidatorWeightSignature, ok, err := findMessage(genesisPeerMessages, unwrapWarpSignature)
-			require.NoError(err)
+			tc.RequireNoError(err)
 			require.True(ok)
 
 			tc.By("creating the signed warp message to increase the weight of the validator")
@@ -562,13 +563,13 @@ var _ = e2e.DescribePChain("[L1]", func() {
 					),
 				},
 			)
-			require.NoError(err)
+			tc.RequireNoError(err)
 
 			tc.By("issuing a SetL1ValidatorWeightTx", func() {
 				tx, err := pWallet.IssueSetL1ValidatorWeightTx(
 					setL1ValidatorWeight.Bytes(),
 				)
-				require.NoError(err)
+				tc.RequireNoError(err)
 
 				tc.By("ensuring the genesis peer has accepted the tx at "+subnetGenesisNode.URI, func() {
 					var (
@@ -611,7 +612,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 
 			tc.By("verifying the L1 validator can be fetched", func() {
 				l1Validator, _, err := pClient.GetL1Validator(tc.DefaultContext(), registerValidationID)
-				require.NoError(err)
+				tc.RequireNoError(err)
 
 				l1Validator.StartTime = 0
 				require.Equal(
@@ -652,14 +653,14 @@ var _ = e2e.DescribePChain("[L1]", func() {
 						unsignedL1ValidatorWeight,
 						nil,
 					)
-					require.NoError(err)
+					tc.RequireNoError(err)
 
 					require.True(genesisPeer.Send(tc.DefaultContext(), l1ValidatorRegistrationRequest))
 				})
 
 				tc.By("getting the signature response", func() {
 					signature, ok, err := findMessage(genesisPeerMessages, unwrapWarpSignature)
-					require.NoError(err)
+					tc.RequireNoError(err)
 					require.True(ok)
 					require.True(bls.Verify(genesisNodePK, signature, unsignedL1ValidatorWeight.Bytes()))
 				})
@@ -671,7 +672,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 				registerValidationID,
 				units.Avax,
 			)
-			require.NoError(err)
+			tc.RequireNoError(err)
 		})
 
 		tc.By("verifying the validator was activated", func() {
@@ -693,7 +694,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 			_, err := pWallet.IssueDisableL1ValidatorTx(
 				registerValidationID,
 			)
-			require.NoError(err)
+			tc.RequireNoError(err)
 		})
 
 		tc.By("verifying the validator was deactivated", func() {
@@ -746,21 +747,21 @@ var _ = e2e.DescribePChain("[L1]", func() {
 					},
 				}
 				justificationBytes, err := proto.Marshal(&justification)
-				require.NoError(err)
+				tc.RequireNoError(err)
 
 				tc.By("sending the request to sign the warp message", func() {
 					l1ValidatorRegistrationRequest, err := wrapWarpSignatureRequest(
 						unsignedL1ValidatorRegistration,
 						justificationBytes,
 					)
-					require.NoError(err)
+					tc.RequireNoError(err)
 
 					require.True(genesisPeer.Send(tc.DefaultContext(), l1ValidatorRegistrationRequest))
 				})
 
 				tc.By("getting the signature response", func() {
 					signature, ok, err := findMessage(genesisPeerMessages, unwrapWarpSignature)
-					require.NoError(err)
+					tc.RequireNoError(err)
 					require.True(ok)
 					require.True(bls.Verify(genesisNodePK, signature, unsignedL1ValidatorRegistration.Bytes()))
 				})
@@ -769,7 +770,7 @@ var _ = e2e.DescribePChain("[L1]", func() {
 
 		genesisPeerMessages.Close()
 		genesisPeer.StartClose()
-		require.NoError(genesisPeer.AwaitClosed(tc.DefaultContext()))
+		tc.RequireNoError(genesisPeer.AwaitClosed(tc.DefaultContext()))
 
 		_ = e2e.CheckBootstrapIsPossible(tc, env.GetNetwork())
 	})
