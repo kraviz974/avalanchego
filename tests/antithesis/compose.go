@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	bootstrapIndex = 0
-	workloadName   = "workload"
+	bootstrapIndex     = 0
+	workloadName       = "workload"
+	WorkloadNetworkDir = "/root/tmpnet-network"
 )
 
 var (
@@ -189,16 +190,14 @@ func newComposeProject(network *tmpnet.Network, nodeImageName string, workloadIm
 		if err != nil {
 			return nil, err
 		}
-		if len(trackSubnets) > 0 {
-			env[config.TrackSubnetsKey] = trackSubnets
-			if i == bootstrapIndex {
-				// DB volume for bootstrap node will need to initialized with the subnet
-				volumes = append(volumes, types.ServiceVolumeConfig{
-					Type:   types.VolumeTypeBind,
-					Source: fmt.Sprintf("./volumes/%s/db", serviceName),
-					Target: "/root/.avalanchego/db",
-				})
-			}
+		env[config.TrackSubnetsKey] = trackSubnets
+		if i == bootstrapIndex {
+			// DB volume for bootstrap node will need to initialized with the subnet
+			volumes = append(volumes, types.ServiceVolumeConfig{
+				Type:   types.VolumeTypeBind,
+				Source: fmt.Sprintf("./volumes/%s/db", serviceName),
+				Target: "/root/.avalanchego/db",
+			})
 		}
 
 		if i == 0 {
@@ -250,7 +249,15 @@ func newComposeProject(network *tmpnet.Network, nodeImageName string, workloadIm
 		ContainerName: workloadName,
 		Hostname:      workloadName,
 		Image:         workloadImageName,
-		Environment:   workloadEnv.ToMappingWithEquals(),
+		Volumes: []types.ServiceVolumeConfig{
+			// Ensure the network configuration is mounted to enable ephemeral node start
+			{
+				Type:   types.VolumeTypeBind,
+				Source: getWorkloadNetworkPath("."),
+				Target: WorkloadNetworkDir,
+			},
+		},
+		Environment: workloadEnv.ToMappingWithEquals(),
 		Networks: map[string]*types.ServiceNetworkConfig{
 			networkName: {
 				Ipv4Address: baseNetworkAddress + ".129",

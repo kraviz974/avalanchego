@@ -26,8 +26,11 @@ var _ = ginkgo.Describe("[Banff]", func() {
 
 func TestCustomAssetTransfer(
 	tc tests.TestContext,
+	_ uint32,
 	wallet primary.Wallet,
 	ownerAddress ids.ShortID,
+	_ string,
+	_ e2e.AddEphemeralNodeFunc,
 ) {
 	// Get the P-chain and the X-chain wallets
 	pWallet := wallet.P()

@@ -16,13 +16,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/perms"
 )
 
-// Given a path, compose the expected path of the bootstrap node's docker compose db volume.
-func getBootstrapVolumePath(targetPath string) (string, error) {
-	absPath, err := filepath.Abs(targetPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to convert target path to absolute path: %w", err)
-	}
-	return filepath.Join(absPath, "volumes", getServiceName(bootstrapIndex)), nil
+func getWorkloadNetworkPath(parentPath string) string {
+	return filepath.Join(parentPath, "volumes", workloadName, "network")
 }
 
 // Creates the network and copies its configuration and database to the compose data volumes for use at runtime.
@@ -39,9 +34,6 @@ func initVolumes(network *tmpnet.Network, avalancheGoPath string, pluginDir stri
 
 	// Copy the db from one of the nodes to the bootstrap volume path.
 	bootstrapVolumePath := filepath.Join(absPath, "volumes", getServiceName(bootstrapIndex))
-	if err != nil {
-		return fmt.Errorf("failed to get bootstrap volume path: %w", err)
-	}
 	if err := os.MkdirAll(bootstrapVolumePath, perms.ReadWriteExecute); err != nil {
 		return fmt.Errorf("failed to create db path %q: %w", bootstrapVolumePath, err)
 	}
@@ -53,7 +45,7 @@ func initVolumes(network *tmpnet.Network, avalancheGoPath string, pluginDir stri
 	}
 
 	// Copy the network path to the workload volume.
-	workloadNetworkPath := filepath.Join(absPath, "volumes", workloadName, "network")
+	workloadNetworkPath := getWorkloadNetworkPath(absPath)
 	if err := os.MkdirAll(workloadNetworkPath, perms.ReadWriteExecute); err != nil {
 		return fmt.Errorf("failed to create network path %q: %w", workloadNetworkPath, err)
 	}

@@ -109,7 +109,7 @@ var _ = e2e.DescribePChain("[Interchain Workflow]", ginkgo.Label(e2e.UsesCChainL
 		})
 
 		tc.By("adding new node and waiting for it to report healthy")
-		node := e2e.AddEphemeralNode(tc, network, tmpnet.FlagsMap{})
+		node := e2e.AddEphemeralNodeWithNetwork(tc, tmpnet.FlagsMap{}, network)
 		e2e.WaitForHealthy(tc, node)
 
 		tc.By("retrieving new node's id and pop")

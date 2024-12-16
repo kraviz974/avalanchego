@@ -72,23 +72,22 @@ func getBootstrapIDsAndIPs(tc tests.TestContext, uris []string) ([]string, []str
 	return bootstrapIDs, bootstrapIPs
 }
 
-func AddEphemeralNode(tc *tests.SimpleTestContext, network *tmpnet.Network, flags tmpnet.FlagsMap) *tmpnet.Node {
-	// TODO(marun) Supply the path via a configuration flag?
-	// TODO(marun) Somehow provide the URIs
-	uris := []string{}
-
-	network, err := tmpnet.ReadNetwork("")
+func getAddEphemeralNode(tc *tests.SimpleTestContext, networkDir string, uris []string) e2e.AddEphemeralNodeFunc {
+	// Read the network that will start ephemeral nodes
+	network, err := tmpnet.ReadNetwork(networkDir)
 	require.NoError(tc, err)
 
-	// Configure bootstrap for the uris
+	// Determine the bootstrap configuration
 	bootstrapIPs, bootstrapIDs := getBootstrapIDsAndIPs(tc, uris)
 	if len(bootstrapIPs) == 0 {
 		tc.Log().Warn("unable to determine bootstrap IDs")
 		tc.Abort()
 	}
-	tmpnet.SetNetworkingConfig(flags, bootstrapIDs, bootstrapIPs)
 
-	return e2e.AddEphemeralNode(tc, network, flags)
+	return func(tc tests.TestContext, flags tmpnet.FlagsMap) *tmpnet.Node {
+		tmpnet.SetNetworkingConfig(flags, bootstrapIDs, bootstrapIPs)
+		return e2e.AddEphemeralNodeWithNetwork(tc, flags, network)
+	}
 }
 
 func main() {
@@ -115,12 +114,15 @@ func main() {
 		zap.Duration("duration", time.Since(walletSyncStartTime)),
 	)
 
+	addEphemeralNode := getAddEphemeralNode(tc, antithesis.WorkloadNetworkDir, c.URIs)
+
 	genesisWorkload := &workload{
-		id:     0,
-		log:    genesisLog,
-		wallet: wallet,
-		addrs:  set.Of(genesis.EWOQKey.Address()),
-		uris:   c.URIs,
+		id:               0,
+		log:              genesisLog,
+		wallet:           wallet,
+		addrs:            set.Of(genesis.EWOQKey.Address()),
+		uris:             c.URIs,
+		addEphemeralNode: addEphemeralNode,
 	}
 
 	workloads := make([]*workload, NumKeys)
@@ -172,11 +174,12 @@ func main() {
 		)
 
 		workloads[i] = &workload{
-			id:     i,
-			log:    workloadLog,
-			wallet: wallet,
-			addrs:  set.Of(addr),
-			uris:   c.URIs,
+			id:               i,
+			log:              workloadLog,
+			wallet:           wallet,
+			addrs:            set.Of(addr),
+			uris:             c.URIs,
+			addEphemeralNode: addEphemeralNode,
 		}
 	}
 
@@ -201,11 +204,12 @@ func newWallet(tc *tests.SimpleTestContext, keychain *secp256k1fx.Keychain, node
 }
 
 type workload struct {
-	id     int
-	log    logging.Logger
-	wallet *primary.Wallet
-	addrs  set.Set[ids.ShortID]
-	uris   []string
+	id               int
+	log              logging.Logger
+	wallet           *primary.Wallet
+	addrs            set.Set[ids.ShortID]
+	uris             []string
+	addEphemeralNode e2e.AddEphemeralNodeFunc
 }
 
 // newTestContext returns a test context that ensures that log output and assertions are
@@ -299,14 +303,12 @@ func (w *workload) executeTest(ctx context.Context) {
 	case 5:
 		w.log.Info("executing banff.TestCustomAssetTransfer")
 		addr, _ := w.addrs.Peek()
-		banff.TestCustomAssetTransfer(tc, *w.wallet, addr)
+		banff.TestCustomAssetTransfer(tc, *w.wallet, addr, w.addEphemeralNode)
 	case 6:
 		w.log.Info("executing p.CreateAndUpdateL1Validators")
 		addr, _ := w.addrs.Peek()
-		// TODO(marun) Enable AddEphemeralNode
-		// - Need to figure out how to get the bootstrap node id and ip
-		// - Need to figure out how to vary the behavior between e2e and antithesis.
-		pchain_e2e.CreateAndUpdateL1Validators(tc, *w.wallet, addr)
+		// TODO(marun) Need to figure out how to vary the behavior of AddEphemeralNode between e2e and antithesis.
+		pchain_e2e.CreateAndUpdateL1Validators(tc, *w.wallet, addr, w.addEphemeralNode)
 	case 7:
 		w.log.Info("sleeping")
 	}

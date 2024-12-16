@@ -27,7 +27,7 @@ var _ = ginkgo.Describe("Duplicate node handling", func() {
 		network := e2e.GetEnv(tc).GetNetwork()
 
 		tc.By("creating new node")
-		node1 := e2e.AddEphemeralNode(tc, network, tmpnet.FlagsMap{})
+		node1 := e2e.AddEphemeralNodeWithNetwork(tc, tmpnet.FlagsMap{}, network)
 		e2e.WaitForHealthy(tc, node1)
 
 		tc.By("checking that the new node is connected to its peers")
@@ -43,7 +43,7 @@ var _ = ginkgo.Describe("Duplicate node handling", func() {
 			// the same node ID.
 			config.DataDirKey: fmt.Sprintf("%s-second", node1Flags[config.DataDirKey]),
 		}
-		node2 := e2e.AddEphemeralNode(tc, network, node2Flags)
+		node2 := e2e.AddEphemeralNodeWithNetwork(tc, node2Flags, network)
 
 		tc.By("checking that the second new node fails to become healthy before timeout")
 		err := tmpnet.WaitForHealthy(tc.DefaultContext(), tc.Log(), node2)
