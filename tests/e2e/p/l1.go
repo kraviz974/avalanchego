@@ -72,35 +72,35 @@ var _ = e2e.DescribePChain("[L1]", func() {
 
 func CreateAndUpdateL1Validators(
 	tc tests.TestContext,
+	networkID uint32,
 	wallet primary.Wallet,
 	ownerAddress ids.ShortID,
+	nodeURI string,
+	// TODO(marun) Find a better way to enable this behavior to vary by test environment
+	addEphemeralNode e2e.AddEphemeralNodeFunc,
 ) {
 	require := require.New(tc)
 
-	env := e2e.GetEnv(tc)
-	nodeURI := env.GetRandomNodeURI()
-
 	tc.By("verifying Etna is activated", func() {
-		infoClient := info.NewClient(nodeURI.URI)
+		infoClient := info.NewClient(nodeURI)
 		upgrades, err := infoClient.Upgrades(tc.DefaultContext())
 		tc.RequireNoError(err)
 
 		now := time.Now()
 		if !upgrades.IsEtnaActivated(now) {
+			// TODO(marun) etna needs to be activated in antithesis for this test to run
+			// TODO(marun) ginkgo.skip is not supportable under antithesis
 			ginkgo.Skip("Etna is not activated. L1s are enabled post-Etna, skipping test.")
 		}
 	})
 
-	tc.By("loading the wallet")
 	var (
-		keychain   = env.NewKeychain()
-		baseWallet = e2e.NewWallet(tc, keychain, nodeURI)
-		pWallet    = baseWallet.P()
-		pClient    = platformvm.NewClient(nodeURI.URI)
-		owner      = &secp256k1fx.OutputOwners{
+		pWallet = wallet.P()
+		pClient = platformvm.NewClient(nodeURI)
+		owner   = &secp256k1fx.OutputOwners{
 			Threshold: 1,
 			Addrs: []ids.ShortID{
-				keychain.Keys[0].Address(),
+				ownerAddress,
 			},
 		}
 	)
@@ -140,7 +140,7 @@ func CreateAndUpdateL1Validators(
 			platformvm.GetSubnetClientResponse{
 				IsPermissioned: true,
 				ControlKeys: []ids.ShortID{
-					keychain.Keys[0].Address(),
+					ownerAddress,
 				},
 				Threshold: 1,
 			},
@@ -179,7 +179,7 @@ func CreateAndUpdateL1Validators(
 				platformvm.GetSubnetClientResponse{
 					IsPermissioned: true,
 					ControlKeys: []ids.ShortID{
-						keychain.Keys[0].Address(),
+						ownerAddress,
 					},
 					Threshold: 1,
 				},
@@ -193,7 +193,7 @@ func CreateAndUpdateL1Validators(
 	})
 
 	tc.By("creating the genesis validator")
-	subnetGenesisNode := e2e.AddEphemeralNode(tc, env.GetNetwork(), tmpnet.FlagsMap{
+	subnetGenesisNode := addEphemeralNode(tc, tmpnet.FlagsMap{
 		config.TrackSubnetsKey: subnetID.String(),
 	})
 
@@ -204,10 +204,7 @@ func CreateAndUpdateL1Validators(
 	tc.RequireNoError(err)
 
 	tc.By("connecting to the genesis validator")
-	var (
-		networkID           = env.GetNetwork().GetNetworkID()
-		genesisPeerMessages = buffer.NewUnboundedBlockingDeque[p2pmessage.InboundMessage](1)
-	)
+	genesisPeerMessages := buffer.NewUnboundedBlockingDeque[p2pmessage.InboundMessage](1)
 	genesisPeer, err := peer.StartTestPeer(
 		tc.DefaultContext(),
 		subnetGenesisNode.StakingAddress,
@@ -281,7 +278,7 @@ func CreateAndUpdateL1Validators(
 				platformvm.GetSubnetClientResponse{
 					IsPermissioned: false,
 					ControlKeys: []ids.ShortID{
-						keychain.Keys[0].Address(),
+						ownerAddress,
 					},
 					Threshold:      1,
 					ConversionID:   expectedConversionID,
@@ -367,7 +364,7 @@ func CreateAndUpdateL1Validators(
 	tc.By("advancing the proposervm P-chain height", advanceProposerVMPChainHeight)
 
 	tc.By("creating the validator to register")
-	subnetRegisterNode := e2e.AddEphemeralNode(tc, env.GetNetwork(), tmpnet.FlagsMap{
+	subnetRegisterNode := addEphemeralNode(tc, tmpnet.FlagsMap{
 		config.TrackSubnetsKey: subnetID.String(),
 	})
 
@@ -781,7 +778,6 @@ func CreateAndUpdateL1Validators(
 	genesisPeer.StartClose()
 	tc.RequireNoError(genesisPeer.AwaitClosed(tc.DefaultContext()))
 
-	_ = e2e.CheckBootstrapIsPossible(tc, env.GetNetwork())
 }
 
 func wrapWarpSignatureRequest(
