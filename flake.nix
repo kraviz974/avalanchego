@@ -83,10 +83,15 @@
           # This has no effect on other platforms.
           callPackage = pkgs.darwin.apple_sdk_11_0.callPackage or pkgs.callPackage;
         in
-        {
+        rec {
           packages.default = callPackage ./. {
             inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
             go = pkgs.go_1_23_6;
+            rev = self.rev or "dev";
+          };
+
+          packages.container = callPackage ./container.nix {
+            package = packages.default;
             rev = self.rev or "dev";
           };
 
