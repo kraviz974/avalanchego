@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 
 	"github.com/ava-labs/avalanchego/genesis"
-	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/perms"
 )
@@ -154,7 +153,7 @@ func (n *Network) readConfig() error {
 type serializedNetworkConfig struct {
 	UUID                 string                    `json:"uuid,omitempty"`
 	Owner                string                    `json:"owner,omitempty"`
-	PrimarySubnetConfig  *subnets.Config           `json:"primarySubnetConfig,omitempty"`
+	PrimarySubnetConfig  map[string]any            `json:"primarySubnetConfig,omitempty"`
 	PrimaryChainConfigs  map[string]ChainConfigMap `json:"primaryChainConfigs,omitempty"`
 	DefaultFlags         FlagsMap                  `json:"defaultFlags,omitempty"`
 	DefaultRuntimeConfig NodeRuntimeConfig         `json:"defaultRuntimeConfig,omitempty"`

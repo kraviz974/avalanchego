@@ -27,7 +27,6 @@ import (
 	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/genesis"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -108,7 +107,7 @@ type Network struct {
 	Genesis *genesis.UnparsedConfig
 
 	// Configuration for primary subnets
-	PrimarySubnetConfig *subnets.Config
+	PrimarySubnetConfig map[string]any
 
 	// Configuration for primary network chains (P, X, C)
 	PrimaryChainConfigs map[string]ChainConfigMap
@@ -810,10 +809,10 @@ func (n *Network) GetGenesisFileContent() (string, error) {
 // GetSubnetConfigContent returns the base64-encoded and
 // JSON-marshaled map of subnetID to subnet configuration.
 func (n *Network) GetSubnetConfigContent() (string, error) {
-	subnetConfigs := map[ids.ID]subnets.Config{}
+	subnetConfigs := map[ids.ID]map[string]any{}
 
-	if n.PrimarySubnetConfig != nil {
-		subnetConfigs[constants.PrimaryNetworkID] = *n.PrimarySubnetConfig
+	if len(n.PrimarySubnetConfig) > 0 {
+		subnetConfigs[constants.PrimaryNetworkID] = n.PrimarySubnetConfig
 	}
 
 	// Collect configuration for non-primary subnets
@@ -823,10 +822,10 @@ func (n *Network) GetSubnetConfigContent() (string, error) {
 			// possible to supply configuration without an ID.
 			continue
 		}
-		if subnet.Config == nil {
+		if len(subnet.Config) == 0 {
 			continue
 		}
-		subnetConfigs[subnet.SubnetID] = *subnet.Config
+		subnetConfigs[subnet.SubnetID] = subnet.Config
 	}
 
 	if len(subnetConfigs) == 0 {
