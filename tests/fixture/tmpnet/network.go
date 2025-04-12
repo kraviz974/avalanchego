@@ -65,7 +65,8 @@ var (
 	// TODO(marun) Remove when subnet-evm configures the genesis with this key.
 	HardhatKey *secp256k1.PrivateKey
 
-	errInsufficientNodes = errors.New("at least one node is required")
+	errInsufficientNodes    = errors.New("at least one node is required")
+	errMissingRuntimeConfig = errors.New("DefaultRuntimeConfig must not be empty")
 )
 
 func init() {
@@ -257,6 +258,11 @@ func (n *Network) EnsureDefaultConfig(log logging.Logger) error {
 				primaryChainConfig[key] = value
 			}
 		}
+	}
+
+	emptyRuntime := NodeRuntimeConfig{}
+	if n.DefaultRuntimeConfig == emptyRuntime {
+		return errMissingRuntimeConfig
 	}
 
 	return nil
@@ -888,6 +894,7 @@ func waitForHealthy(ctx context.Context, log logging.Logger, nodes []*Node) erro
 			unhealthyNodes.Remove(node)
 			log.Info("node is healthy",
 				zap.Stringer("nodeID", node.NodeID),
+				// TODO(marun) This would need to be a local URI for kube.
 				zap.String("uri", node.URI),
 			)
 		}

@@ -83,12 +83,15 @@ func (v *FlagVars) NodeRuntimeConfig() (*tmpnet.NodeRuntimeConfig, error) {
 	return v.startNetworkVars.GetNodeRuntimeConfig()
 }
 
+// TODO(marun) Rename to StartLocalCollectors
 func (v *FlagVars) StartCollectors() bool {
-	return v.startCollectors
+	// Only start collectors if nodes are running as local processes
+	return v.startNetworkVars.ProcessRuntimeConfigured() && v.startCollectors
 }
 
 func (v *FlagVars) CheckMonitoring() bool {
-	return v.checkMonitoring
+	// TODO(marun) Enable this check for kube in a subsequent PR
+	return v.startNetworkVars.ProcessRuntimeConfigured() && v.checkMonitoring
 }
 
 func (v *FlagVars) NetworkDir() string {
