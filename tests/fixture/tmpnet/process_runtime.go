@@ -11,11 +11,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -37,27 +37,30 @@ const (
 var (
 	AvalancheGoPluginDirEnvName = config.EnvVarName(config.EnvPrefix, config.PluginDirKey)
 
-	errNodeAlreadyRunning   = errors.New("failed to start node: node is already running")
-	errNotRunning           = errors.New("node is not running")
-	errMissingRuntimeConfig = errors.New("node is missing runtime configuration")
+	errNodeAlreadyRunning = errors.New("failed to start node: node is already running")
+	errNotRunning         = errors.New("node is not running")
 )
 
 // Defines local-specific node configuration. Supports setting default
 // and node-specific values.
-type NodeProcess struct {
+type ProcessRuntime struct {
 	node *Node
 
 	// PID of the node process
 	pid int
 }
 
-func (p *NodeProcess) setProcessContext(processContext node.ProcessContext) {
+func (p *ProcessRuntime) getRuntimeConfig() *ProcessRuntimeConfig {
+	return p.node.getRuntimeConfig().Process
+}
+
+func (p *ProcessRuntime) setProcessContext(processContext node.ProcessContext) {
 	p.pid = processContext.PID
 	p.node.URI = processContext.URI
 	p.node.StakingAddress = processContext.StakingAddress
 }
 
-func (p *NodeProcess) readState() error {
+func (p *ProcessRuntime) readState(_ context.Context) error {
 	path := p.getProcessContextPath()
 	bytes, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -80,7 +83,9 @@ func (p *NodeProcess) readState() error {
 // its staking port. The network will start faster with this
 // synchronization due to the avoidance of exponential backoff
 // if a node tries to connect to a beacon that is not ready.
-func (p *NodeProcess) Start(log logging.Logger) error {
+func (p *ProcessRuntime) Start(_ context.Context) error {
+	log := p.node.network.log
+
 	// Avoid attempting to start an already running node.
 	proc, err := p.getProcess()
 	if err != nil {
@@ -90,10 +95,7 @@ func (p *NodeProcess) Start(log logging.Logger) error {
 		return errNodeAlreadyRunning
 	}
 
-	runtimeConfig := p.node.getRuntimeConfig().Process
-	if runtimeConfig == nil {
-		return errMissingRuntimeConfig
-	}
+	runtimeConfig := p.getRuntimeConfig()
 
 	// Attempt to check for rpc version compatibility
 	if err := checkVMBinaries(log, p.node.network.Subnets, runtimeConfig); err != nil {
@@ -104,6 +106,10 @@ func (p *NodeProcess) Start(log logging.Logger) error {
 	// creation of a new file can indicate node start.
 	if err := os.Remove(p.getProcessContextPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("failed to remove stale process context file: %w", err)
+	}
+
+	if err := p.writeFlags(); err != nil {
+		return fmt.Errorf("writing node flags: %w", err)
 	}
 
 	// All arguments are provided in the flags file
@@ -141,8 +147,56 @@ func (p *NodeProcess) Start(log logging.Logger) error {
 	return p.writeMonitoringConfig()
 }
 
+func (p *ProcessRuntime) writeFlags() error {
+	flags, err := p.node.composeFlags()
+	if err != nil {
+		return fmt.Errorf("failed to compose node flags: %w", err)
+	}
+
+	flags.SetDefaults(FlagsMap{
+		config.DataDirKey: p.node.DataDir,
+		// Use dynamic port allocation
+		config.HTTPPortKey:    0,
+		config.StakingPortKey: 0,
+		// Binding to localhost on macos avoids having a permission
+		// dialog pop up for every node that tries to bind to
+		// non-localhost interfaces
+		config.PublicIPKey:    "127.0.0.1",
+		config.HTTPHostKey:    "127.0.0.1",
+		config.StakingHostKey: "127.0.0.1",
+	})
+
+	runtimeConfig := p.getRuntimeConfig()
+
+	// Only configure the plugin dir with a non-empty value to ensure the use of the
+	// default value (`[datadir]/plugins`) when no plugin dir is configured.
+	if len(runtimeConfig.PluginDir) > 0 {
+		flags.SetDefault(config.PluginDirKey, runtimeConfig.PluginDir)
+	}
+
+	// Ensure a non-empty plugin directory exists or the node will fail to start
+	pluginDir, err := flags.GetStringVal(config.PluginDirKey)
+	if err != nil {
+		return fmt.Errorf("failed to get plugin dir: %w", err)
+	}
+	if len(pluginDir) > 0 {
+		if err := os.MkdirAll(pluginDir, perms.ReadWriteExecute); err != nil {
+			return fmt.Errorf("failed to create plugin dir: %w", err)
+		}
+	}
+
+	bytes, err := DefaultJSONMarshal(flags)
+	if err != nil {
+		return fmt.Errorf("failed to marshal node flags: %w", err)
+	}
+	if err := os.WriteFile(p.node.GetFlagsPath(), bytes, perms.ReadWrite); err != nil {
+		return fmt.Errorf("failed to write node flags: %w", err)
+	}
+	return nil
+}
+
 // Signals the node process to stop.
-func (p *NodeProcess) InitiateStop() error {
+func (p *ProcessRuntime) InitiateStop(_ context.Context) error {
 	proc, err := p.getProcess()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve process to stop: %w", err)
@@ -158,7 +212,7 @@ func (p *NodeProcess) InitiateStop() error {
 }
 
 // Waits for the node process to stop.
-func (p *NodeProcess) WaitForStopped(ctx context.Context) error {
+func (p *ProcessRuntime) WaitForStopped(ctx context.Context) error {
 	ticker := time.NewTicker(defaultNodeTickerInterval)
 	defer ticker.Stop()
 	for {
@@ -178,7 +232,27 @@ func (p *NodeProcess) WaitForStopped(ctx context.Context) error {
 	}
 }
 
-func (p *NodeProcess) IsHealthy(ctx context.Context) (bool, error) {
+// Restarts the node
+func (p *ProcessRuntime) Restart(ctx context.Context) error {
+	if p.getRuntimeConfig().ReuseDynamicPorts {
+		// Attempt to save the API port currently being used so the
+		// restarted node can reuse it. This may result in the node
+		// failing to start if the operating system allocates the port
+		// to a different process between node stop and start.
+		if err := p.saveAPIPort(); err != nil {
+			return err
+		}
+	}
+	if err := p.node.Stop(ctx); err != nil {
+		return fmt.Errorf("failed to stop node %s: %w", p.node.NodeID, err)
+	}
+	if err := p.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start node %s: %w", p.node.NodeID, err)
+	}
+	return nil
+}
+
+func (p *ProcessRuntime) IsHealthy(ctx context.Context) (bool, error) {
 	// Check that the node process is running as a precondition for
 	// checking health. getProcess will also ensure that the node's
 	// API URI is current.
@@ -191,24 +265,31 @@ func (p *NodeProcess) IsHealthy(ctx context.Context) (bool, error) {
 	}
 
 	healthReply, err := CheckNodeHealth(ctx, p.node.URI)
-	if err != nil {
+	if errors.Is(ErrUnrecoverableNodeHealthCheck, err) {
 		return false, err
+	}
+	if err != nil {
+		p.node.network.log.Debug("failed to check node health",
+			zap.Stringer("nodeID", p.node.NodeID),
+			zap.Error(err),
+		)
+		return false, nil
 	}
 	return healthReply.Healthy, nil
 }
 
-func (p *NodeProcess) getProcessContextPath() string {
+func (p *ProcessRuntime) getProcessContextPath() string {
 	return filepath.Join(p.node.DataDir, config.DefaultProcessContextFilename)
 }
 
-func (p *NodeProcess) waitForProcessContext(ctx context.Context) error {
+func (p *ProcessRuntime) waitForProcessContext(ctx context.Context) error {
 	ticker := time.NewTicker(defaultNodeTickerInterval)
 	defer ticker.Stop()
 
 	ctx, cancel := context.WithTimeout(ctx, defaultNodeInitTimeout)
 	defer cancel()
 	for len(p.node.URI) == 0 {
-		err := p.readState()
+		err := p.readState(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to read process context for node %q: %w", p.node.NodeID, err)
 		}
@@ -225,10 +306,10 @@ func (p *NodeProcess) waitForProcessContext(ctx context.Context) error {
 // Retrieve the node process if it is running. As part of determining
 // process liveness, the node's process context will be refreshed if
 // live or cleared if not running.
-func (p *NodeProcess) getProcess() (*os.Process, error) {
+func (p *ProcessRuntime) getProcess() (*os.Process, error) {
 	// Read the process context to ensure freshness. The node may have
 	// stopped or been restarted since last read.
-	if err := p.readState(); err != nil {
+	if err := p.readState(context.Background()); err != nil {
 		return nil, fmt.Errorf("failed to read process context: %w", err)
 	}
 
@@ -262,19 +343,9 @@ func getProcess(pid int) (*os.Process, error) {
 }
 
 // Write monitoring configuration enabling collection of metrics and logs from the node.
-func (p *NodeProcess) writeMonitoringConfig() error {
+func (p *ProcessRuntime) writeMonitoringConfig() error {
 	// Ensure labeling that uniquely identifies the node and its network
-	commonLabels := FlagsMap{
-		// Explicitly setting an instance label avoids the default
-		// behavior of using the node's URI since the URI isn't
-		// guaranteed stable (e.g. port may change after restart).
-		"instance":          p.node.GetUniqueID(),
-		"network_uuid":      p.node.network.UUID,
-		"node_id":           p.node.NodeID,
-		"is_ephemeral_node": strconv.FormatBool(p.node.IsEphemeral),
-		"network_owner":     p.node.network.Owner,
-	}
-	commonLabels.SetDefaults(githubLabelsFromEnv())
+	commonLabels := p.node.getLabels()
 
 	prometheusConfig := []FlagsMap{
 		{
@@ -289,7 +360,12 @@ func (p *NodeProcess) writeMonitoringConfig() error {
 	promtailLabels := FlagsMap{
 		"__path__": filepath.Join(p.node.DataDir, "logs", "*.log"),
 	}
-	promtailLabels.SetDefaults(commonLabels)
+	for k, v := range commonLabels {
+		if _, ok := promtailLabels[k]; ok {
+			continue
+		}
+		promtailLabels[k] = v
+	}
 	promtailConfig := []FlagsMap{
 		{
 			"targets": []string{"localhost"},
@@ -300,7 +376,7 @@ func (p *NodeProcess) writeMonitoringConfig() error {
 }
 
 // Return the path for this node's prometheus configuration.
-func (p *NodeProcess) getMonitoringConfigPath(name string) (string, error) {
+func (p *ProcessRuntime) getMonitoringConfigPath(name string) (string, error) {
 	// Ensure a unique filename to allow config files to be added and removed
 	// by multiple nodes without conflict.
 	serviceDiscoveryDir, err := getServiceDiscoveryDir(name)
@@ -311,7 +387,7 @@ func (p *NodeProcess) getMonitoringConfigPath(name string) (string, error) {
 }
 
 // Ensure the removal of the monitoring configuration files for this node.
-func (p *NodeProcess) removeMonitoringConfig() error {
+func (p *ProcessRuntime) removeMonitoringConfig() error {
 	for _, name := range []string{promtailCmd, prometheusCmd} {
 		configPath, err := p.getMonitoringConfigPath(name)
 		if err != nil {
@@ -325,7 +401,7 @@ func (p *NodeProcess) removeMonitoringConfig() error {
 }
 
 // Write the configuration for a type of monitoring (e.g. prometheus, promtail).
-func (p *NodeProcess) writeMonitoringConfigFile(name string, config []FlagsMap) error {
+func (p *ProcessRuntime) writeMonitoringConfigFile(name string, config []FlagsMap) error {
 	configPath, err := p.getMonitoringConfigPath(name)
 	if err != nil {
 		return err
@@ -348,12 +424,28 @@ func (p *NodeProcess) writeMonitoringConfigFile(name string, config []FlagsMap) 
 	return nil
 }
 
-func (p *NodeProcess) GetLocalURI(_ context.Context) (string, func(), error) {
+func (p *ProcessRuntime) GetLocalURI(_ context.Context) (string, func(), error) {
 	return p.node.URI, func() {}, nil
 }
 
-func (p *NodeProcess) GetLocalStakingAddress(_ context.Context) (netip.AddrPort, func(), error) {
+func (p *ProcessRuntime) GetLocalStakingAddress(_ context.Context) (netip.AddrPort, func(), error) {
 	return p.node.StakingAddress, func() {}, nil
+}
+
+// Saves the currently allocated API port to the node's configuration
+// for use across restarts.
+func (p *ProcessRuntime) saveAPIPort() error {
+	hostPort := strings.TrimPrefix(p.node.URI, "http://")
+	if len(hostPort) == 0 {
+		// Without an API URI there is nothing to save
+		return nil
+	}
+	_, port, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return err
+	}
+	p.node.Flags[config.HTTPPortKey] = port
+	return nil
 }
 
 // watchLogFileForFatal waits for the specified file path to exist and then checks each of
@@ -420,19 +512,5 @@ func watchLogFileForFatal(ctx context.Context, cancelWithCause context.CancelCau
 				return
 			}
 		}
-	}
-}
-
-func githubLabelsFromEnv() FlagsMap {
-	return FlagsMap{
-		// prometheus/promtail ignore empty values so including these
-		// labels with empty values outside of a github worker (where
-		// the env vars will not be set) should not be a problem.
-		"gh_repo":        os.Getenv("GH_REPO"),
-		"gh_workflow":    os.Getenv("GH_WORKFLOW"),
-		"gh_run_id":      os.Getenv("GH_RUN_ID"),
-		"gh_run_number":  os.Getenv("GH_RUN_NUMBER"),
-		"gh_run_attempt": os.Getenv("GH_RUN_ATTEMPT"),
-		"gh_job_id":      os.Getenv("GH_JOB_ID"),
 	}
 }

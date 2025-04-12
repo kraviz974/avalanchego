@@ -8,9 +8,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net"
+	"maps"
 	"net/http"
 	"net/netip"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +20,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
-	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 )
 
@@ -33,16 +34,27 @@ var (
 	errMissingTLSKeyForNodeID = fmt.Errorf("failed to ensure node ID: missing value for %q", config.StakingTLSKeyContentKey)
 	errMissingCertForNodeID   = fmt.Errorf("failed to ensure node ID: missing value for %q", config.StakingCertContentKey)
 	errInvalidKeypair         = fmt.Errorf("%q and %q must be provided together or not at all", config.StakingTLSKeyContentKey, config.StakingCertContentKey)
+
+	// Labels expected to be available in the environment when running in GitHub Actions
+	githubLabels = []string{
+		"gh_repo",
+		"gh_workflow",
+		"gh_run_id",
+		"gh_run_number",
+		"gh_run_attempt",
+		"gh_job_id",
+	}
 )
 
 // NodeRuntime defines the methods required to support running a node.
 type NodeRuntime interface {
-	readState() error
+	readState(ctx context.Context) error
 	GetLocalURI(ctx context.Context) (string, func(), error)
 	GetLocalStakingAddress(ctx context.Context) (netip.AddrPort, func(), error)
-	Start(log logging.Logger) error
-	InitiateStop() error
+	Start(ctx context.Context) error
+	InitiateStop(ctx context.Context) error
 	WaitForStopped(ctx context.Context) error
+	Restart(ctx context.Context) error
 	IsHealthy(ctx context.Context) (bool, error)
 }
 
@@ -119,7 +131,7 @@ func NewNodesOrPanic(count int) []*Node {
 // Retrieves the runtime for the node.
 func (n *Node) getRuntime() NodeRuntime {
 	if n.runtime == nil {
-		n.runtime = &NodeProcess{
+		n.runtime = &ProcessRuntime{
 			node: n,
 		}
 	}
@@ -141,23 +153,27 @@ func (n *Node) IsHealthy(ctx context.Context) (bool, error) {
 	return n.getRuntime().IsHealthy(ctx)
 }
 
-func (n *Node) Start(log logging.Logger) error {
-	return n.getRuntime().Start(log)
+func (n *Node) Start(ctx context.Context) error {
+	return n.getRuntime().Start(ctx)
 }
 
 func (n *Node) InitiateStop(ctx context.Context) error {
 	if err := n.SaveMetricsSnapshot(ctx); err != nil {
 		return err
 	}
-	return n.getRuntime().InitiateStop()
+	return n.getRuntime().InitiateStop(ctx)
 }
 
 func (n *Node) WaitForStopped(ctx context.Context) error {
 	return n.getRuntime().WaitForStopped(ctx)
 }
 
-func (n *Node) readState() error {
-	return n.getRuntime().readState()
+func (n *Node) Restart(ctx context.Context) error {
+	return n.getRuntime().Restart(ctx)
+}
+
+func (n *Node) readState(ctx context.Context) error {
+	return n.getRuntime().readState(ctx)
 }
 
 func (n *Node) GetLocalURI(ctx context.Context) (string, func(), error) {
@@ -341,18 +357,78 @@ func (n *Node) GetUniqueID() string {
 	return n.network.UUID + "-" + strings.ToLower(nodeIDString[startIndex:endIndex])
 }
 
-// Saves the currently allocated API port to the node's configuration
-// for use across restarts.
-func (n *Node) SaveAPIPort() error {
-	hostPort := strings.TrimPrefix(n.URI, "http://")
-	if len(hostPort) == 0 {
-		// Without an API URI there is nothing to save
-		return nil
+// composeFlags determines the set of flags that should be used to
+// start the node.
+func (n *Node) composeFlags() (FlagsMap, error) {
+	flags := maps.Clone(n.Flags)
+
+	// Apply the network defaults first so that they are not overridden
+	flags.SetDefaults(n.network.DefaultFlags)
+
+	flags.SetDefaults(DefaultTmpnetFlags())
+
+	// Convert the network id to a string to ensure consistency in JSON round-tripping.
+	flags.SetDefault(config.NetworkNameKey, strconv.FormatUint(uint64(n.network.GetNetworkID()), 10))
+
+	// Set the bootstrap configuration
+	bootstrapIPs, bootstrapIDs := n.network.GetBootstrapIPsAndIDs(n)
+	flags.SetDefault(config.BootstrapIDsKey, strings.Join(bootstrapIDs, ","))
+	flags.SetDefault(config.BootstrapIPsKey, strings.Join(bootstrapIPs, ","))
+
+	// TODO(marun) Maybe avoid computing content flags for each node start?
+
+	if n.network.Genesis != nil {
+		genesisFileContent, err := n.network.GetGenesisFileContent()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get genesis file content: %w", err)
+		}
+		flags.SetDefault(config.GenesisFileContentKey, genesisFileContent)
+
+		isSingleNodeNetwork := (len(n.network.Nodes) == 1 && len(n.network.Genesis.InitialStakers) == 1)
+		if isSingleNodeNetwork {
+			n.network.log.Info("defaulting to sybil protection disabled to enable a single-node network to start")
+			flags.SetDefault(config.SybilProtectionEnabledKey, false)
+		}
 	}
-	_, port, err := net.SplitHostPort(hostPort)
+
+	subnetConfigContent, err := n.network.GetSubnetConfigContent()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to get subnet config content: %w", err)
 	}
-	n.Flags[config.HTTPPortKey] = port
-	return nil
+	if len(subnetConfigContent) > 0 {
+		flags.SetDefault(config.SubnetConfigContentKey, subnetConfigContent)
+	}
+
+	chainConfigContent, err := n.network.GetChainConfigContent()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chain config content: %w", err)
+	}
+	if len(chainConfigContent) > 0 {
+		flags.SetDefault(config.ChainConfigContentKey, chainConfigContent)
+	}
+
+	return flags, nil
+}
+
+// getLabels retrieves the map of labels and their values to be
+// applied to metrics and logs collected from the node.
+func (n *Node) getLabels() map[string]string {
+	labels := map[string]string{
+		// Explicitly setting an instance label avoids the default
+		// behavior of using the node's URI since the URI isn't
+		// guaranteed stable (e.g. port may change after restart).
+		"instance":          n.GetUniqueID(),
+		"network_uuid":      n.network.UUID,
+		"node_id":           n.NodeID.String(),
+		"is_ephemeral_node": strconv.FormatBool(n.IsEphemeral),
+		"network_owner":     n.network.Owner,
+	}
+	// Include the values of github labels if available
+	for _, label := range githubLabels {
+		value := os.Getenv(strings.ToUpper(label))
+		if len(value) > 0 {
+			labels[label] = value
+		}
+	}
+	return labels
 }

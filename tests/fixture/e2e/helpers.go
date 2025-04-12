@@ -136,7 +136,7 @@ func NewEthClient(tc tests.TestContext, nodeURI tmpnet.NodeURI) ethclient.Client
 func AddEphemeralNode(tc tests.TestContext, network *tmpnet.Network, node *tmpnet.Node) *tmpnet.Node {
 	require := require.New(tc)
 
-	require.NoError(network.StartNode(tc.DefaultContext(), tc.Log(), node))
+	require.NoError(network.StartNode(tc.DefaultContext(), node))
 
 	tc.DeferCleanup(func() {
 		tc.Log().Info("shutting down ephemeral node",
@@ -150,11 +150,11 @@ func AddEphemeralNode(tc tests.TestContext, network *tmpnet.Network, node *tmpne
 }
 
 // Wait for the given node to report healthy.
-func WaitForHealthy(t require.TestingT, node *tmpnet.Node) {
+func WaitForHealthy(tc tests.TestContext, node *tmpnet.Node) {
 	// Need to use explicit context (vs DefaultContext()) to support use with DeferCleanup
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancel()
-	require.NoError(t, tmpnet.WaitForHealthy(ctx, node))
+	require.NoError(tc, tmpnet.WaitForHealthyNode(ctx, tc.Log(), node))
 }
 
 // Sends an eth transaction and waits for the transaction receipt from the
@@ -236,7 +236,7 @@ func CheckBootstrapIsPossible(tc tests.TestContext, network *tmpnet.Network) *tm
 	}
 
 	node := tmpnet.NewEphemeralNode(flags)
-	require.NoError(network.StartNode(tc.DefaultContext(), tc.Log(), node))
+	require.NoError(network.StartNode(tc.DefaultContext(), node))
 	// StartNode will initiate node stop if an error is encountered during start,
 	// so no further cleanup effort is required if an error is seen here.
 
@@ -248,7 +248,7 @@ func CheckBootstrapIsPossible(tc tests.TestContext, network *tmpnet.Network) *tm
 	})
 
 	// Check that the node becomes healthy within timeout
-	require.NoError(tmpnet.WaitForHealthy(tc.DefaultContext(), node))
+	require.NoError(tmpnet.WaitForHealthyNode(tc.DefaultContext(), tc.Log(), node))
 
 	// Ensure that the primary validators are still healthy
 	for _, node := range network.Nodes {
@@ -272,10 +272,11 @@ func StartNetwork(
 	networkCmd NetworkCmd,
 ) {
 	require := require.New(tc)
+	log := tc.Log()
 
 	err := tmpnet.BootstrapNewNetwork(
 		tc.DefaultContext(),
-		tc.Log(),
+		log,
 		network,
 		rootNetworkDir,
 	)
@@ -289,7 +290,7 @@ func StartNetwork(
 		require.NoError(err, "failed to bootstrap network")
 	}
 
-	tc.Log().Info("network started successfully")
+	log.Info("network started successfully")
 
 	symlinkPath, err := tmpnet.GetReusableNetworkPathForOwner(network.Owner)
 	require.NoError(err)
@@ -298,7 +299,7 @@ func StartNetwork(
 		// Symlink the path of the created network to the default owner path (e.g. latest_avalanchego-e2e)
 		// to enable easy discovery for reuse.
 		require.NoError(os.Symlink(network.Dir, symlinkPath))
-		tc.Log().Info("symlinked network dir for reuse",
+		log.Info("symlinked network dir for reuse",
 			zap.String("networkDir", network.Dir),
 			zap.String("symlinkPath", symlinkPath),
 		)
@@ -306,7 +307,7 @@ func StartNetwork(
 
 	tc.DeferCleanup(func() {
 		if networkCmd == ReuseNetworkCmd || networkCmd == RestartNetworkCmd {
-			tc.Log().Info("skipping shutdown for network intended for reuse",
+			log.Info("skipping shutdown for network intended for reuse",
 				zap.String("networkDir", network.Dir),
 				zap.String("symlinkPath", symlinkPath),
 			)
@@ -314,20 +315,20 @@ func StartNetwork(
 		}
 
 		if networkCmd == StartNetworkCmd {
-			tc.Log().Info("skipping shutdown for --start-network",
+			log.Info("skipping shutdown for --start-network",
 				zap.String("networkDir", network.Dir),
 			)
 			return
 		}
 
 		if shutdownDelay > 0 {
-			tc.Log().Info("delaying network shutdown to ensure final metrics scrape",
+			log.Info("delaying network shutdown to ensure final metrics scrape",
 				zap.Duration("delay", shutdownDelay),
 			)
 			time.Sleep(shutdownDelay)
 		}
 
-		tc.Log().Info("shutting down network")
+		log.Info("shutting down network")
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 		defer cancel()
 		require.NoError(network.Stop(ctx))

@@ -4,6 +4,7 @@
 package tmpnet
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -20,17 +21,6 @@ import (
 // For consumption outside of avalanchego. Needs to be kept exported.
 func (n *Node) GetFlagsPath() string {
 	return filepath.Join(n.DataDir, "flags.json")
-}
-
-func (n *Node) writeFlags(flags FlagsMap) error {
-	bytes, err := DefaultJSONMarshal(flags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal node flags: %w", err)
-	}
-	if err := os.WriteFile(n.GetFlagsPath(), bytes, perms.ReadWrite); err != nil {
-		return fmt.Errorf("failed to write node flags: %w", err)
-	}
-	return nil
 }
 
 func (n *Node) getConfigPath() string {
@@ -70,7 +60,7 @@ func (n *Node) writeConfig() error {
 	return nil
 }
 
-func (n *Node) Read(network *Network, dataDir string) error {
+func (n *Node) Read(ctx context.Context, network *Network, dataDir string) error {
 	n.network = network
 	n.DataDir = dataDir
 
@@ -80,7 +70,7 @@ func (n *Node) Read(network *Network, dataDir string) error {
 	if err := n.EnsureNodeID(); err != nil {
 		return err
 	}
-	return n.readState()
+	return n.readState(ctx)
 }
 
 func (n *Node) Write() error {
