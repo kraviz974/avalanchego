@@ -235,10 +235,7 @@ func (n *Node) EnsureKeys() error {
 // Ensures a BLS signing key is generated if not already present.
 func (n *Node) EnsureBLSSigningKey() error {
 	// Attempt to retrieve an existing key
-	existingKey, err := n.Flags.GetStringVal(config.StakingSignerKeyContentKey)
-	if err != nil {
-		return err
-	}
+	existingKey := n.Flags[config.StakingSignerKeyContentKey]
 	if len(existingKey) > 0 {
 		// Nothing to do
 		return nil
@@ -258,16 +255,8 @@ func (n *Node) EnsureStakingKeypair() error {
 	keyKey := config.StakingTLSKeyContentKey
 	certKey := config.StakingCertContentKey
 
-	key, err := n.Flags.GetStringVal(keyKey)
-	if err != nil {
-		return err
-	}
-
-	cert, err := n.Flags.GetStringVal(certKey)
-	if err != nil {
-		return err
-	}
-
+	key := n.Flags[keyKey]
+	cert := n.Flags[certKey]
 	if len(key) == 0 && len(cert) == 0 {
 		// Generate new keypair
 		tlsCertBytes, tlsKeyBytes, err := staking.NewCertAndKeyBytes()
@@ -287,10 +276,7 @@ func (n *Node) EnsureStakingKeypair() error {
 // Derives the nodes proof-of-possession. Requires the node to have a
 // BLS signing key.
 func (n *Node) GetProofOfPossession() (*signer.ProofOfPossession, error) {
-	signingKey, err := n.Flags.GetStringVal(config.StakingSignerKeyContentKey)
-	if err != nil {
-		return nil, err
-	}
+	signingKey := n.Flags[config.StakingSignerKeyContentKey]
 	signingKeyBytes, err := base64.StdEncoding.DecodeString(signingKey)
 	if err != nil {
 		return nil, err
@@ -312,10 +298,7 @@ func (n *Node) EnsureNodeID() error {
 	keyKey := config.StakingTLSKeyContentKey
 	certKey := config.StakingCertContentKey
 
-	key, err := n.Flags.GetStringVal(keyKey)
-	if err != nil {
-		return err
-	}
+	key := n.Flags[keyKey]
 	if len(key) == 0 {
 		return errMissingTLSKeyForNodeID
 	}
@@ -324,10 +307,7 @@ func (n *Node) EnsureNodeID() error {
 		return fmt.Errorf("failed to ensure node ID: failed to base64 decode value for %q: %w", keyKey, err)
 	}
 
-	cert, err := n.Flags.GetStringVal(certKey)
-	if err != nil {
-		return err
-	}
+	cert := n.Flags[certKey]
 	if len(cert) == 0 {
 		return errMissingCertForNodeID
 	}
@@ -387,7 +367,7 @@ func (n *Node) composeFlags() (FlagsMap, error) {
 		isSingleNodeNetwork := (len(n.network.Nodes) == 1 && len(n.network.Genesis.InitialStakers) == 1)
 		if isSingleNodeNetwork {
 			n.network.log.Info("defaulting to sybil protection disabled to enable a single-node network to start")
-			flags.SetDefault(config.SybilProtectionEnabledKey, false)
+			flags.SetDefault(config.SybilProtectionEnabledKey, "false")
 		}
 	}
 

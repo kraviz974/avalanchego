@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/config"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs/executor"
 )
 
@@ -40,29 +41,33 @@ func DefaultTmpnetFlags() FlagsMap {
 		config.NetworkPeerListPullGossipFreqKey: "250ms",
 		config.NetworkMaxReconnectDelayKey:      "1s",
 		config.HealthCheckFreqKey:               "2s",
-		config.AdminAPIEnabledKey:               true,
-		config.IndexEnabledKey:                  true,
+		config.AdminAPIEnabledKey:               "true",
+		config.IndexEnabledKey:                  "true",
 	}
 }
 
 // Flags suggested for e2e testing
 func DefaultE2EFlags() FlagsMap {
 	return FlagsMap{
-		config.ProposerVMUseCurrentHeightKey: true,
+		config.ProposerVMUseCurrentHeightKey: "true",
 		// Reducing this from the 1s default speeds up tx acceptance
 		config.ProposerVMMinBlockDelayKey: "0s",
 	}
 }
 
+// Chain config values need to be any to enable unmarshaling to golang
+// (vs flags which are parsed with viper).
+type ChainConfigMap map[string]any
+
 // A set of chain configurations appropriate for testing.
-func DefaultChainConfigs() map[string]FlagsMap {
-	return map[string]FlagsMap{
+func DefaultChainConfigs() map[string]ChainConfigMap {
+	return map[string]ChainConfigMap{
 		// Supply only non-default configuration to ensure that default
 		// values will be used. Available C-Chain configuration options are
 		// defined in the `github.com/ava-labs/coreth/evm` package.
 		"C": {
 			"warp-api-enabled": true,
-			"log-level":        "trace",
+			"log-level":        logging.Trace.String(),
 		},
 	}
 }

@@ -156,8 +156,8 @@ func (p *ProcessRuntime) writeFlags() error {
 	flags.SetDefaults(FlagsMap{
 		config.DataDirKey: p.node.DataDir,
 		// Use dynamic port allocation
-		config.HTTPPortKey:    0,
-		config.StakingPortKey: 0,
+		config.HTTPPortKey:    "0",
+		config.StakingPortKey: "0",
 		// Binding to localhost on macos avoids having a permission
 		// dialog pop up for every node that tries to bind to
 		// non-localhost interfaces
@@ -175,10 +175,7 @@ func (p *ProcessRuntime) writeFlags() error {
 	}
 
 	// Ensure a non-empty plugin directory exists or the node will fail to start
-	pluginDir, err := flags.GetStringVal(config.PluginDirKey)
-	if err != nil {
-		return fmt.Errorf("failed to get plugin dir: %w", err)
-	}
+	pluginDir := flags[config.PluginDirKey]
 	if len(pluginDir) > 0 {
 		if err := os.MkdirAll(pluginDir, perms.ReadWriteExecute); err != nil {
 			return fmt.Errorf("failed to create plugin dir: %w", err)
@@ -347,7 +344,7 @@ func (p *ProcessRuntime) writeMonitoringConfig() error {
 	// Ensure labeling that uniquely identifies the node and its network
 	commonLabels := p.node.getLabels()
 
-	prometheusConfig := []FlagsMap{
+	prometheusConfig := []map[string]any{
 		{
 			"targets": []string{strings.TrimPrefix(p.node.URI, "http://")},
 			"labels":  commonLabels,
@@ -357,7 +354,7 @@ func (p *ProcessRuntime) writeMonitoringConfig() error {
 		return err
 	}
 
-	promtailLabels := FlagsMap{
+	promtailLabels := map[string]string{
 		"__path__": filepath.Join(p.node.DataDir, "logs", "*.log"),
 	}
 	for k, v := range commonLabels {
@@ -366,7 +363,7 @@ func (p *ProcessRuntime) writeMonitoringConfig() error {
 		}
 		promtailLabels[k] = v
 	}
-	promtailConfig := []FlagsMap{
+	promtailConfig := []map[string]any{
 		{
 			"targets": []string{"localhost"},
 			"labels":  promtailLabels,
@@ -401,7 +398,7 @@ func (p *ProcessRuntime) removeMonitoringConfig() error {
 }
 
 // Write the configuration for a type of monitoring (e.g. prometheus, promtail).
-func (p *ProcessRuntime) writeMonitoringConfigFile(name string, config []FlagsMap) error {
+func (p *ProcessRuntime) writeMonitoringConfigFile(name string, config []map[string]any) error {
 	configPath, err := p.getMonitoringConfigPath(name)
 	if err != nil {
 		return err

@@ -110,7 +110,7 @@ type Network struct {
 	PrimarySubnetConfig *subnets.Config
 
 	// Configuration for primary network chains (P, X, C)
-	PrimaryChainConfigs map[string]FlagsMap
+	PrimaryChainConfigs map[string]ChainConfigMap
 
 	// Default configuration to use when creating new nodes
 	DefaultFlags         FlagsMap
@@ -244,14 +244,19 @@ func (n *Network) EnsureDefaultConfig(log logging.Logger) error {
 
 	// Ensure primary chains are configured
 	if n.PrimaryChainConfigs == nil {
-		n.PrimaryChainConfigs = map[string]FlagsMap{}
+		n.PrimaryChainConfigs = map[string]ChainConfigMap{}
 	}
 	defaultChainConfigs := DefaultChainConfigs()
-	for alias, chainConfig := range defaultChainConfigs {
+	for alias, defaultChainConfig := range defaultChainConfigs {
 		if _, ok := n.PrimaryChainConfigs[alias]; !ok {
-			n.PrimaryChainConfigs[alias] = FlagsMap{}
+			n.PrimaryChainConfigs[alias] = ChainConfigMap{}
 		}
-		n.PrimaryChainConfigs[alias].SetDefaults(chainConfig)
+		primaryChainConfig := n.PrimaryChainConfigs[alias]
+		for key, value := range defaultChainConfig {
+			if _, ok := primaryChainConfig[key]; !ok {
+				primaryChainConfig[key] = value
+			}
+		}
 	}
 
 	return nil
@@ -391,8 +396,8 @@ func (n *Network) Bootstrap(ctx context.Context, log logging.Logger) error {
 	// The node that will be used to create subnets and bootstrap the network
 	bootstrapNode := n.Nodes[0]
 
-	// Whether sybil protection will need to be re-enabled after subnet creation
-	reEnableSybilProtection := false
+	// An existing sybil protection value that may need to be restored after subnet creation
+	var existingSybilProtectionValue *string
 
 	if len(n.Nodes) > 1 {
 		// Reduce the cost of subnet creation for a network of multiple nodes by
@@ -403,14 +408,11 @@ func (n *Network) Bootstrap(ctx context.Context, log logging.Logger) error {
 		log.Info("starting a single-node network with sybil protection disabled for quicker subnet creation")
 
 		// If sybil protection is enabled, it should be re-enabled before the node is used to bootstrap the other nodes
-		var err error
-		reEnableSybilProtection, err = bootstrapNode.Flags.GetBoolVal(config.SybilProtectionEnabledKey, true)
-		if err != nil {
-			return fmt.Errorf("failed to read sybil protection flag: %w", err)
+		if value, ok := bootstrapNode.Flags[config.SybilProtectionEnabledKey]; ok {
+			existingSybilProtectionValue = &value
 		}
-
 		// Ensure sybil protection is disabled for the bootstrap node.
-		bootstrapNode.Flags[config.SybilProtectionEnabledKey] = false
+		bootstrapNode.Flags[config.SybilProtectionEnabledKey] = "false"
 	}
 
 	if err := n.StartNodes(ctx, log, bootstrapNode); err != nil {
@@ -427,11 +429,17 @@ func (n *Network) Bootstrap(ctx context.Context, log logging.Logger) error {
 		return err
 	}
 
-	if reEnableSybilProtection {
+	if existingSybilProtectionValue == nil {
 		log.Info("re-enabling sybil protection",
 			zap.Stringer("nodeID", bootstrapNode.NodeID),
 		)
 		delete(bootstrapNode.Flags, config.SybilProtectionEnabledKey)
+	} else {
+		log.Info("restoring previous sybil protection value",
+			zap.Stringer("nodeID", bootstrapNode.NodeID),
+			zap.String("sybilProtectionEnabled", *existingSybilProtectionValue),
+		)
+		bootstrapNode.Flags[config.SybilProtectionEnabledKey] = *existingSybilProtectionValue
 	}
 
 	// Ensure the bootstrap node is restarted to pick up subnet and chain configuration
@@ -630,10 +638,7 @@ func (n *Network) CreateSubnets(ctx context.Context, log logging.Logger, apiURI 
 
 	reconfiguredNodes := []*Node{}
 	for _, node := range n.Nodes {
-		existingTrackedSubnets, err := node.Flags.GetStringVal(config.TrackSubnetsKey)
-		if err != nil {
-			return err
-		}
+		existingTrackedSubnets := node.Flags[config.TrackSubnetsKey]
 		trackedSubnets := n.TrackedSubnetsForNode(node.NodeID)
 		if existingTrackedSubnets == trackedSubnets {
 			continue
