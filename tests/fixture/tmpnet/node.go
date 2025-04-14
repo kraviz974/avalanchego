@@ -6,6 +6,7 @@ package tmpnet
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -15,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/ids"
@@ -169,6 +172,10 @@ func (n *Node) getRuntimeConfig() NodeRuntimeConfig {
 
 // Runtime methods
 
+// TODO(marun) differentiate between isReady (accepting connections)
+// and isHealthy (health check is passing). A node with the process
+// runtime will be accepting connections almost immediately, but it
+// will take longer for a node with a kube runtime.
 func (n *Node) IsHealthy(ctx context.Context) (bool, error) {
 	return n.getRuntime().IsHealthy(ctx)
 }
@@ -431,4 +438,35 @@ func (n *Node) getLabels() map[string]string {
 		}
 	}
 	return labels
+}
+
+// WaitForHealthy blocks until node health is true or an error (including context timeout) is observed.
+func (n *Node) WaitForHealthy(ctx context.Context) error {
+	if _, ok := ctx.Deadline(); !ok {
+		return fmt.Errorf("unable to wait for health for node %q with a context without a deadline", n.NodeID)
+	}
+	ticker := time.NewTicker(DefaultNodeTickerInterval)
+	defer ticker.Stop()
+
+	for {
+		healthy, err := n.IsHealthy(ctx)
+		switch {
+		case errors.Is(err, ErrUnrecoverableNodeHealthCheck):
+			return fmt.Errorf("%w for node %q", err, n.NodeID)
+		case err != nil:
+			n.network.log.Debug("Failed to query node health",
+				zap.Stringer("nodeID", n.NodeID),
+				zap.Error(err),
+			)
+			continue
+		case healthy:
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("failed to wait for health of node %q before timeout: %w", n.NodeID, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }

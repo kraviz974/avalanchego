@@ -20,4 +20,7 @@ if [[ -z "${SKIP_BUILD_IMAGE:-}" ]]; then
   bash -x ./scripts/build_xsvm_image.sh
 fi
 
-E2E_SERIAL=1 PATH="${PWD}/bin:$PATH" bash -x ./scripts/tests.e2e.sh --runtime=kube --kube-image=localhost:5001/avalanchego-xsvm
+# Avoid having the test suite start local collectors since collection
+# is only required from the nodes running in the kind cluster
+TMPNET_START_COLLECTORS= E2E_SERIAL=1 PATH="${PWD}/bin:$PATH" \
+  bash -x ./scripts/tests.e2e.sh --runtime=kube --kube-image=localhost:5001/avalanchego-xsvm

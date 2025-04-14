@@ -13,12 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/ava-labs/avalanchego/api/health"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
-	"github.com/ava-labs/avalanchego/utils/logging"
 )
 
 const (
@@ -48,37 +45,6 @@ func CheckNodeHealth(ctx context.Context, uri string) (*health.APIReply, error) 
 	}
 	// Assume all other errors are not recoverable
 	return nil, fmt.Errorf("%w: %w", ErrUnrecoverableNodeHealthCheck, err)
-}
-
-// WaitForHealthy blocks until Node.IsHealthy returns true or an error (including context timeout) is observed.
-func WaitForHealthyNode(ctx context.Context, log logging.Logger, node *Node) error {
-	if _, ok := ctx.Deadline(); !ok {
-		return fmt.Errorf("unable to wait for health for node %q with a context without a deadline", node.NodeID)
-	}
-	ticker := time.NewTicker(DefaultNodeTickerInterval)
-	defer ticker.Stop()
-
-	for {
-		healthy, err := node.IsHealthy(ctx)
-		switch {
-		case errors.Is(err, ErrUnrecoverableNodeHealthCheck):
-			return fmt.Errorf("%w for node %q", err, node.NodeID)
-		case err != nil:
-			log.Debug("Failed to query node health",
-				zap.Stringer("nodeID", node.NodeID),
-				zap.Error(err),
-			)
-			continue
-		case healthy:
-			return nil
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("failed to wait for health of node %q before timeout: %w", node.NodeID, ctx.Err())
-		case <-ticker.C:
-		}
-	}
 }
 
 // NodeURI associates a node ID with its API URI.

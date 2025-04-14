@@ -81,7 +81,6 @@ func (p *KubeRuntime) readState(ctx context.Context) error {
 
 	// Wait for the statefulset to have replicas?
 	if scale.Spec.Replicas == 0 {
-		p.node.network.log.Info("statefulset has no replicas")
 		p.setNotRunning()
 		return nil
 	}
@@ -134,7 +133,54 @@ func (p *KubeRuntime) getFlagsForPod() (FlagsMap, error) {
 func (p *KubeRuntime) Start(ctx context.Context) error {
 	// TODO(marun) Handle the case where the target namespace doesn't exist
 
-	log := p.node.network.log
+	var (
+		log             = p.node.network.log
+		runtimeConfig   = p.runtimeConfig()
+		namespace       = runtimeConfig.Namespace
+		statefulSetName = p.getStatefulSetName()
+	)
+
+	clientset, err := p.getClientset()
+	if err != nil {
+		return err
+	}
+
+	exists := true
+	_, err = clientset.AppsV1().StatefulSets(namespace).Get(ctx, statefulSetName, metav1.GetOptions{})
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to retrieve statefulset %s/%s: %w", namespace, statefulSetName, err)
+		}
+		exists = false
+	}
+
+	if exists {
+		scale, err := clientset.AppsV1().StatefulSets(namespace).GetScale(ctx, statefulSetName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to retrieve scale for statefulset %s/%s: %w", namespace, statefulSetName, err)
+		}
+
+		if scale.Spec.Replicas != 0 {
+			log.Info("node is already running",
+				zap.Stringer("nodeID", p.node.NodeID),
+			)
+			return nil
+		}
+
+		scale.Spec.Replicas = 1
+		_, err = clientset.AppsV1().StatefulSets(runtimeConfig.Namespace).UpdateScale(
+			ctx,
+			statefulSetName,
+			scale,
+			metav1.UpdateOptions{},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to scale up statefulset for %s: %w", p.node.NodeID.String(), err)
+		}
+		return nil
+	}
+
+	// Statefulset needs to be created
 
 	flags, err := p.getFlagsForPod()
 	if err != nil {
@@ -142,7 +188,6 @@ func (p *KubeRuntime) Start(ctx context.Context) error {
 	}
 
 	// Create a statefulset for the pod and wait for it to become ready
-	runtimeConfig := p.runtimeConfig()
 	statefulSet := NewNodeStatefulSet(
 		p.getStatefulSetName(),
 		false, // generateName
@@ -155,10 +200,6 @@ func (p *KubeRuntime) Start(ctx context.Context) error {
 		flags,
 	)
 
-	clientset, err := p.getClientset()
-	if err != nil {
-		return err
-	}
 	createdStatefulSet, err := clientset.AppsV1().StatefulSets(runtimeConfig.Namespace).Create(
 		ctx,
 		statefulSet,
@@ -300,6 +341,7 @@ func (p *KubeRuntime) Restart(ctx context.Context) error {
 	}
 
 	if len(patches) == 0 {
+		// TODO(marun) Rather than skipping restart, scale down and scale up the statefulset. Maybe optionally?
 		log.Info("skipped restart - configuration unchanged")
 		return nil
 	}

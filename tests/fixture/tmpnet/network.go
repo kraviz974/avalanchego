@@ -531,7 +531,7 @@ func WaitForHealthyNodes(ctx context.Context, log logging.Logger, nodes ...*Node
 		log.Info("waiting for node to become healthy",
 			zap.Stringer("nodeID", node.NodeID),
 		)
-		if err := WaitForHealthyNode(ctx, log, node); err != nil {
+		if err := node.WaitForHealthy(ctx); err != nil {
 			return err
 		}
 	}

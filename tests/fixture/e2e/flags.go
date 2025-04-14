@@ -83,10 +83,11 @@ func (v *FlagVars) NodeRuntimeConfig() (*tmpnet.NodeRuntimeConfig, error) {
 	return v.startNetworkVars.GetNodeRuntimeConfig()
 }
 
-// TODO(marun) Rename to StartLocalCollectors
+// TODO(marun) Rename to StartLocalCollector
 func (v *FlagVars) StartCollectors() bool {
-	// Only start collectors if nodes are running as local processes
-	return v.startNetworkVars.ProcessRuntimeConfigured() && v.startCollectors
+	// This only prompts the deployment of local collectors.
+	// TODO(marun) Maybe differentiate between type of collector?
+	return v.startCollectors
 }
 
 func (v *FlagVars) CheckMonitoring() bool {
