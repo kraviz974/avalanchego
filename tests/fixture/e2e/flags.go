@@ -30,7 +30,7 @@ type FlagVars struct {
 	startNetwork     bool
 	startNetworkVars *flags.StartNetworkVars
 
-	startCollectors bool
+	collectorVars   *flags.CollectorVars
 	checkMonitoring bool
 
 	networkDir     string
@@ -83,16 +83,13 @@ func (v *FlagVars) NodeRuntimeConfig() (*tmpnet.NodeRuntimeConfig, error) {
 	return v.startNetworkVars.GetNodeRuntimeConfig()
 }
 
-// TODO(marun) Rename to StartLocalCollector
+// TODO(marun) Rename to StartLocalCollectors
 func (v *FlagVars) StartCollectors() bool {
-	// This only prompts the deployment of local collectors.
-	// TODO(marun) Maybe differentiate between type of collector?
-	return v.startCollectors
+	return v.collectorVars.StartCollectors
 }
 
 func (v *FlagVars) CheckMonitoring() bool {
-	// TODO(marun) Enable this check for kube in a subsequent PR
-	return v.startNetworkVars.ProcessRuntimeConfigured() && v.checkMonitoring
+	return v.checkMonitoring
 }
 
 func (v *FlagVars) NetworkDir() string {
@@ -106,7 +103,7 @@ func (v *FlagVars) NetworkDir() string {
 }
 
 func (v *FlagVars) NetworkShutdownDelay() time.Duration {
-	if v.startCollectors {
+	if v.StartCollectors() {
 		// Only return a non-zero value if we want to ensure the collectors have
 		// a chance to collect the metrics at the end of the test.
 		return tmpnet.NetworkShutdownDelay
@@ -135,7 +132,7 @@ func RegisterFlagsWithDefaultOwner(defaultOwner string) *FlagVars {
 	vars.startNetworkVars = flags.NewStartNetworkFlagVars(defaultOwner)
 
 	SetMonitoringFlags(
-		&vars.startCollectors,
+		&vars.collectorVars,
 		&vars.checkMonitoring,
 	)
 
@@ -178,13 +175,8 @@ func RegisterFlagsWithDefaultOwner(defaultOwner string) *FlagVars {
 }
 
 // Enable reuse by the upgrade job
-func SetMonitoringFlags(startCollectors *bool, checkMonitoring *bool) {
-	flag.BoolVar(
-		startCollectors,
-		"start-collectors",
-		cast.ToBool(tmpnet.GetEnvWithDefault("TMPNET_START_COLLECTORS", "false")),
-		"[optional] whether to start collectors of logs and metrics from nodes of the temporary network.",
-	)
+func SetMonitoringFlags(collectorVars **flags.CollectorVars, checkMonitoring *bool) {
+	*collectorVars = flags.NewCollectorsFlagVars()
 	flag.BoolVar(
 		checkMonitoring,
 		"check-monitoring",
