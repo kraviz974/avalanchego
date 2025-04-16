@@ -51,7 +51,6 @@ type VM interface {
 		genesisBytes []byte,
 		upgradeBytes []byte,
 		configBytes []byte,
-		toEngine chan<- Message,
 		fxs []*Fx,
 		appSender AppSender,
 	) error
@@ -77,4 +76,10 @@ type VM interface {
 	// it have an extension called `accounts`, where clients could get
 	// information about their accounts.
 	CreateHandlers(context.Context) (map[string]http.Handler, error)
+
+	// SubscribeToEvents blocks until either the given context is cancelled, or a message is returned.
+	// The given pChainHeight is the height of the P-chain at the time of subscription.
+	// The returned uint64 corresponds to the P-chain height at the time of returning the message.
+	// The caller is expected to propagate to subsequent calls the P-chain height returned and not the one passed in.
+	SubscribeToEvents(ctx context.Context, pChainHeight uint64) (Message, uint64)
 }
