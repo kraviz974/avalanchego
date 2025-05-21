@@ -332,6 +332,8 @@ func (h *verifier) VerifySpendUTXOs(
 	return nil
 }
 
+// GetInputOutputs returns the input/output utxos and any AVAX that is produced
+// as part of the execution of the tx
 func GetInputOutputs(tx txs.UnsignedTx) (
 	[]*avax.TransferableInput,
 	[]*avax.TransferableOutput,
@@ -346,6 +348,7 @@ func GetInputOutputs(tx txs.UnsignedTx) (
 	return g.InputUTXOs, g.OutputUTXOs, g.ProducedAVAX, nil
 }
 
+// inputOutputGetter gets the utxos and AVAX produced for each tx type
 type inputOutputGetter struct {
 	// InputUTXOs is the utxos consumed by the tx
 	InputUTXOs []*avax.TransferableInput
@@ -448,6 +451,9 @@ func (i *inputOutputGetter) BaseTx(tx *txs.BaseTx) error {
 	return nil
 }
 
+// ConvertSubnetToL1Tx treats validator balances like produced AVAX because
+// the fee payer must have enough input AVAX to cover the initial state of the
+// L1 validators
 func (i *inputOutputGetter) ConvertSubnetToL1Tx(tx *txs.ConvertSubnetToL1Tx) error {
 	i.getUTXOs(tx.BaseTx)
 
@@ -458,6 +464,9 @@ func (i *inputOutputGetter) ConvertSubnetToL1Tx(tx *txs.ConvertSubnetToL1Tx) err
 	return nil
 }
 
+// RegisterL1ValidatorTx treats the validator balance like produced AVAX because
+// the fee payer must have enough input AVAX to cover the initial state of the
+// validator
 func (i *inputOutputGetter) RegisterL1ValidatorTx(tx *txs.RegisterL1ValidatorTx) error {
 	i.getUTXOs(tx.BaseTx)
 	i.ProducedAVAX += tx.Balance
@@ -471,6 +480,8 @@ func (i *inputOutputGetter) SetL1ValidatorWeightTx(tx *txs.SetL1ValidatorWeightT
 	return nil
 }
 
+// RegisterL1ValidatorTx treats the validator balance like produced AVAX because
+// the fee payer must have enough input AVAX to cover the increase in balance
 func (i *inputOutputGetter) IncreaseL1ValidatorBalanceTx(tx *txs.IncreaseL1ValidatorBalanceTx) error {
 	i.getUTXOs(tx.BaseTx)
 	i.ProducedAVAX += tx.Balance
