@@ -63,6 +63,7 @@ type VM struct {
 	blockbuilder.Builder
 	*network.Network
 	validators.State
+	Mempool *pmempool.Mempool
 
 	metrics platformvmmetrics.Metrics
 
@@ -167,7 +168,7 @@ func (vm *VM) Initialize(
 		Bootstrapped: &vm.bootstrapped,
 	}
 
-	mempool, err := pmempool.New(
+	vm.Mempool, err = pmempool.New(
 		"mempool",
 		vm.Internal.DynamicFeeConfig.Weights,
 		1_000_000,
@@ -179,7 +180,7 @@ func (vm *VM) Initialize(
 	}
 
 	vm.manager = blockexecutor.NewManager(
-		mempool,
+		vm.Mempool,
 		toEngine,
 		vm.metrics,
 		vm.state,
@@ -197,7 +198,7 @@ func (vm *VM) Initialize(
 			validatorManager,
 		),
 		txVerifier,
-		mempool,
+		vm.Mempool,
 		toEngine,
 		txExecutorBackend.Config.PartialSyncPrimaryNetwork,
 		appSender,
@@ -218,7 +219,7 @@ func (vm *VM) Initialize(
 	go vm.Network.PullGossip(vm.onShutdownCtx)
 
 	vm.Builder = blockbuilder.New(
-		mempool,
+		vm.Mempool,
 		toEngine,
 		txExecutorBackend,
 		vm.manager,
@@ -287,7 +288,7 @@ func (vm *VM) pruneMempool() error {
 	}
 
 	for _, tx := range blockTxs {
-		if err := vm.Builder.Add(tx); err != nil {
+		if err := vm.Mempool.Add(tx); err != nil {
 			vm.ctx.Log.Debug(
 				"failed to reissue tx",
 				zap.Stringer("txID", tx.ID()),

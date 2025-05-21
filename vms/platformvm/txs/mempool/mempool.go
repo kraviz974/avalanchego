@@ -199,16 +199,13 @@ func (m *Mempool) Get(txID ids.ID) (*txs.Tx, bool) {
 	return tx.Tx, true
 }
 
-// TODO remove variadic param
 // TODO support removal by inputs
 // TODO remove conflicts of tx
-func (m *Mempool) Remove(txs ...*txs.Tx) {
+func (m *Mempool) Remove(tx *txs.Tx) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	for _, tx := range txs {
-		m.remove(tx.ID())
-	}
+	m.remove(tx.ID())
 }
 
 func (m *Mempool) remove(txID ids.ID) {
