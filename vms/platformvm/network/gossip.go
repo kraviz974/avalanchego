@@ -160,12 +160,6 @@ func (g *gossipMempool) Has(txID ids.ID) bool {
 	return ok
 }
 
-func (g *gossipMempool) Iterate(f func(gossipable *txs.Tx) bool) {
-	g.Mempool.Iterate(func(tx *txs.Tx) bool {
-		return f(tx)
-	})
-}
-
 func (g *gossipMempool) GetFilter() (bloom []byte, salt []byte) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()

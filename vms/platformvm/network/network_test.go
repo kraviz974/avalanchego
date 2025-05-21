@@ -89,9 +89,6 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 						BaseTx: avax.BaseTx{
 							Ins: []*avax.TransferableInput{
 								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.ID{1, 2, 3},
-									},
 									Asset: avax.Asset{
 										ID: avaxAssetID,
 									},
@@ -113,9 +110,6 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 					BaseTx: avax.BaseTx{
 						Ins: []*avax.TransferableInput{
 							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
 								Asset: avax.Asset{
 									ID: avaxAssetID,
 								},
@@ -152,9 +146,6 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 					BaseTx: avax.BaseTx{
 						Ins: []*avax.TransferableInput{
 							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
 								Asset: avax.Asset{
 									ID: avaxAssetID,
 								},
@@ -191,9 +182,6 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 					BaseTx: avax.BaseTx{
 						Ins: []*avax.TransferableInput{
 							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
 								Asset: avax.Asset{
 									ID: avaxAssetID,
 								},
@@ -259,7 +247,7 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 							},
 						},
 					},
-					TxID: ids.ID{1},
+					TxID: ids.GenerateTestID(),
 				}
 				return tx
 			}(),
@@ -289,9 +277,6 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 						BaseTx: avax.BaseTx{
 							Ins: []*avax.TransferableInput{
 								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.ID{1, 2, 3},
-									},
 									Asset: avax.Asset{
 										ID: avaxAssetID,
 									},
@@ -329,9 +314,6 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 					BaseTx: avax.BaseTx{
 						Ins: []*avax.TransferableInput{
 							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
 								Asset: avax.Asset{
 									ID: avaxAssetID,
 								},

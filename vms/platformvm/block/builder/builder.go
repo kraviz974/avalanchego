@@ -26,11 +26,11 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/status"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs/fee"
+	"github.com/ava-labs/avalanchego/vms/platformvm/txs/mempool"
 
 	smblock "github.com/ava-labs/avalanchego/snow/engine/snowman/block"
 	blockexecutor "github.com/ava-labs/avalanchego/vms/platformvm/block/executor"
 	txexecutor "github.com/ava-labs/avalanchego/vms/platformvm/txs/executor"
-	pmempool "github.com/ava-labs/avalanchego/vms/platformvm/txs/mempool"
 )
 
 const (
@@ -82,7 +82,7 @@ type Builder interface {
 
 // builder implements a simple builder to convert txs into valid blocks
 type builder struct {
-	*pmempool.Mempool
+	*mempool.Mempool
 
 	toEngine          chan<- common.Message
 	txExecutorBackend *txexecutor.Backend
@@ -96,7 +96,7 @@ type builder struct {
 }
 
 func New(
-	mempool *pmempool.Mempool,
+	mempool *mempool.Mempool,
 	toEngine chan<- common.Message,
 	txExecutorBackend *txexecutor.Backend,
 	blkManager blockexecutor.Manager,
@@ -417,7 +417,7 @@ func packDurangoBlockTxs(
 	ctx context.Context,
 	parentID ids.ID,
 	parentState state.Chain,
-	mempool *pmempool.Mempool,
+	mempool *mempool.Mempool,
 	backend *txexecutor.Backend,
 	manager blockexecutor.Manager,
 	timestamp time.Time,
@@ -478,7 +478,7 @@ func packEtnaBlockTxs(
 	ctx context.Context,
 	parentID ids.ID,
 	parentState state.Chain,
-	mempool *pmempool.Mempool,
+	mempool *mempool.Mempool,
 	backend *txexecutor.Backend,
 	manager blockexecutor.Manager,
 	timestamp time.Time,
@@ -578,7 +578,7 @@ func executeTx(
 	ctx context.Context,
 	parentID ids.ID,
 	stateDiff state.Diff,
-	mempool *pmempool.Mempool,
+	mempool *mempool.Mempool,
 	backend *txexecutor.Backend,
 	manager blockexecutor.Manager,
 	pChainHeight uint64,
