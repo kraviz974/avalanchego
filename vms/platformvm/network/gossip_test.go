@@ -66,7 +66,7 @@ func TestMempoolDuplicate(t *testing.T) {
 	avaxAssetID := ids.GenerateTestID()
 	testMempool, err := pmempool.New(
 		"",
-		gas.Dimensions{},
+		gas.Dimensions{1, 1, 1, 1},
 		1_000_000,
 		avaxAssetID,
 		prometheus.NewRegistry(),
@@ -144,7 +144,7 @@ func TestGossipAddBloomFilter(t *testing.T) {
 	txVerifier := testTxVerifier{}
 	mempool, err := pmempool.New(
 		"",
-		gas.Dimensions{},
+		gas.Dimensions{1, 1, 1, 1},
 		1_000_000,
 		avaxAssetID,
 		prometheus.NewRegistry(),
