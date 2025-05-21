@@ -493,7 +493,8 @@ func TestMempoolAdd(t *testing.T) {
 				require.NoError(m.Add(tx))
 			}
 
-			require.ErrorIs(m.Add(tt.tx), tt.wantErr)
+			err = m.Add(tt.tx)
+			require.ErrorIs(err, tt.wantErr)
 
 			for _, wantTxID := range tt.wantTxIDs {
 				_, ok := m.Get(wantTxID)
