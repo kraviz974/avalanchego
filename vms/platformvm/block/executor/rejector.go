@@ -17,7 +17,8 @@ var _ block.Visitor = (*rejector)(nil)
 // being shutdown.
 type rejector struct {
 	*backend
-	toEngine chan<- common.Message
+	toEngine        chan<- common.Message
+	addTxsToMempool bool
 }
 
 func (r *rejector) BanffAbortBlock(b *block.BanffAbortBlock) error {
@@ -67,6 +68,30 @@ func (r *rejector) rejectBlock(b block.Block, blockType string) error {
 		zap.Uint64("height", b.Height()),
 		zap.Stringer("parentID", b.Parent()),
 	)
+
+	if !r.addTxsToMempool {
+		return nil
+	}
+
+	for _, tx := range b.Txs() {
+		if err := r.Mempool.Add(tx); err != nil {
+			r.ctx.Log.Debug(
+				"failed to reissue tx",
+				zap.Stringer("txID", tx.ID()),
+				zap.Stringer("blkID", blkID),
+				zap.Error(err),
+			)
+		}
+	}
+
+	if r.Mempool.Len() == 0 {
+		return nil
+	}
+
+	select {
+	case r.toEngine <- common.PendingTxs:
+	default:
+	}
 
 	return nil
 }

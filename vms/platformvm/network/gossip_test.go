@@ -81,13 +81,13 @@ func TestMempoolDuplicate(t *testing.T) {
 				Ins: []*avax.TransferableInput{
 					{
 						UTXOID: avax.UTXOID{
-							TxID: ids.ID{1, 2, 3},
+							TxID: ids.GenerateTestID(),
 						},
 						Asset: avax.Asset{
 							ID: avaxAssetID,
 						},
 						In: &secp256k1fx.TransferInput{
-							Amt: 2,
+							Amt: 1,
 						},
 					},
 				},
@@ -126,13 +126,13 @@ func TestGossipAddBloomFilter(t *testing.T) {
 				Ins: []*avax.TransferableInput{
 					{
 						UTXOID: avax.UTXOID{
-							TxID: ids.ID{1, 2, 3},
+							TxID: ids.GenerateTestID(),
 						},
 						Asset: avax.Asset{
 							ID: avaxAssetID,
 						},
 						In: &secp256k1fx.TransferInput{
-							Amt: 2,
+							Amt: 1,
 						},
 					},
 				},

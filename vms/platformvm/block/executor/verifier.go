@@ -243,6 +243,8 @@ func (v *verifier) ApricotAtomicBlock(b *block.ApricotAtomicBlock) error {
 		return err
 	}
 
+	v.Mempool.Remove(b.Tx)
+
 	blkID := b.ID()
 	v.blkIDToState[blkID] = &blockState{
 		statelessBlock: b,
@@ -430,6 +432,8 @@ func (v *verifier) proposalBlock(
 	onCommitState.AddTx(tx, status.Committed)
 	onAbortState.AddTx(tx, status.Aborted)
 
+	v.Mempool.RemoveConflicts(tx.InputIDs())
+
 	blkID := b.ID()
 	v.blkIDToState[blkID] = &blockState{
 		proposalBlockState: proposalBlockState{
@@ -484,6 +488,10 @@ func (v *verifier) standardBlock(
 	// have been issued.
 	if hasChanges := changedDuringAdvanceTime || len(txs) > 0 || lowBalanceL1ValidatorsEvicted; !hasChanges {
 		return ErrStandardBlockWithoutChanges
+	}
+
+	for _, tx := range txs {
+		v.Mempool.RemoveConflicts(tx.InputIDs())
 	}
 
 	blkID := b.ID()

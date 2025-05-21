@@ -143,6 +143,7 @@ func TestRejectBlock(t *testing.T) {
 					Mempool:      mempool,
 					state:        state,
 				},
+				addTxsToMempool: true,
 			}
 
 			require.NoError(tt.rejectFunc(rejector, blk))
