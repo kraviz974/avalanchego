@@ -586,7 +586,7 @@ func executeTx(
 	feeCalculator fee.Calculator,
 	tx *txs.Tx,
 ) (bool, error) {
-	mempool.Remove(tx)
+	mempool.Remove(tx.ID())
 
 	// Invariant: [tx] has already been syntactically verified.
 

@@ -7,21 +7,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/chains/atomic"
 	"github.com/ava-labs/avalanchego/chains/atomic/atomicmock"
 	"github.com/ava-labs/avalanchego/database/databasemock"
+	"github.com/ava-labs/avalanchego/database/memdb"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow"
+	"github.com/ava-labs/avalanchego/snow/snowtest"
+	"github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/upgrade/upgradetest"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/timer/mockable"
+	"github.com/ava-labs/avalanchego/vms/components/gas"
 	"github.com/ava-labs/avalanchego/vms/components/verify"
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
+	"github.com/ava-labs/avalanchego/vms/platformvm/config"
+	"github.com/ava-labs/avalanchego/vms/platformvm/genesis/genesistest"
 	"github.com/ava-labs/avalanchego/vms/platformvm/metrics"
+	"github.com/ava-labs/avalanchego/vms/platformvm/reward"
 	"github.com/ava-labs/avalanchego/vms/platformvm/state"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	"github.com/ava-labs/avalanchego/vms/platformvm/txs/mempool"
 	"github.com/ava-labs/avalanchego/vms/platformvm/validators/validatorstest"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 )
@@ -50,11 +60,20 @@ func TestAcceptorVisitProposalBlock(t *testing.T) {
 	s := state.NewMockState(ctrl)
 	s.EXPECT().Checksum().Return(ids.Empty).Times(1)
 
+	snowCtx := snowtest.Context(t, ids.GenerateTestID())
+	mempool, err := mempool.New(
+		"",
+		gas.Dimensions{1, 1, 1, 1},
+		1_000_000,
+		snowCtx.AVAXAssetID,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(err)
+
 	acceptor := &acceptor{
 		backend: &backend{
-			ctx: &snow.Context{
-				Log: logging.NoLog{},
-			},
+			Mempool: mempool,
+			ctx:     snowCtx,
 			blkIDToState: map[ids.ID]*blockState{
 				blkID: {},
 			},
@@ -158,20 +177,45 @@ func TestAcceptorVisitStandardBlock(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
-	s := state.NewMockState(ctrl)
-	sharedMemory := atomicmock.NewSharedMemory(ctrl)
+	registry := prometheus.NewRegistry()
+	snowCtx := snowtest.Context(t, ids.GenerateTestID())
+	snowCtx.SharedMemory = atomic.NewMemory(memdb.New()).
+		NewSharedMemory(ids.GenerateTestID())
+	s, err := state.New(
+		memdb.New(),
+		genesistest.NewBytes(t, genesistest.Config{}),
+		registry,
+		validators.NewManager(),
+		upgradetest.GetConfig(upgradetest.Fortuna),
+		&config.Default,
+		snowCtx,
+		metrics.Noop,
+		reward.NewCalculator(reward.Config{
+			MaxConsumptionRate: 10,
+			MinConsumptionRate: 1,
+			MintingPeriod:      time.Hour,
+			SupplyCap:          1_000_000,
+		}),
+	)
+	require.NoError(err)
 
 	parentID := ids.GenerateTestID()
 	clk := &mockable.Clock{}
+	mempool, err := mempool.New(
+		"",
+		gas.Dimensions{1, 1, 1, 1},
+		1_000_000,
+		snowCtx.AVAXAssetID,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(err)
 	acceptor := &acceptor{
 		backend: &backend{
+			Mempool:      mempool,
 			lastAccepted: parentID,
 			blkIDToState: make(map[ids.ID]*blockState),
 			state:        s,
-			ctx: &snow.Context{
-				Log:          logging.NoLog{},
-				SharedMemory: sharedMemory,
-			},
+			ctx:          snowCtx,
 		},
 		metrics:    metrics.Noop,
 		validators: validatorstest.Manager,
@@ -227,15 +271,7 @@ func TestAcceptorVisitStandardBlock(t *testing.T) {
 	acceptor.backend.blkIDToState[childID] = childState
 
 	// Set expected calls on dependencies.
-	s.EXPECT().SetLastAccepted(blk.ID()).Times(1)
-	s.EXPECT().SetHeight(blk.Height()).Times(1)
-	s.EXPECT().AddStatelessBlock(blk).Times(1)
-	batch := databasemock.NewBatch(ctrl)
-	s.EXPECT().CommitBatch().Return(batch, nil).Times(1)
-	s.EXPECT().Abort().Times(1)
 	onAcceptState.EXPECT().Apply(s).Times(1)
-	sharedMemory.EXPECT().Apply(atomicRequests, batch).Return(nil).Times(1)
-	s.EXPECT().Checksum().Return(ids.Empty).Times(1)
 
 	require.NoError(acceptor.BanffStandardBlock(blk))
 	require.True(calledOnAcceptFunc)

@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/codec/linearcodec"
 	"github.com/ava-labs/avalanchego/database/memdb"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/components/gas"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
@@ -143,7 +144,7 @@ func TestMempoolOrdering(t *testing.T) {
 	gotTx, ok := m.Peek()
 	require.True(ok)
 	require.Equal(highTx, gotTx)
-	m.Remove(gotTx)
+	m.Remove(gotTx.ID())
 
 	gotTx, ok = m.Peek()
 	require.True(ok)
@@ -536,6 +537,236 @@ func TestMempoolAdd(t *testing.T) {
 			}
 
 			require.Equal(len(tt.wantTxIDs), m.Len())
+		})
+	}
+}
+
+func TestMempool_Remove(t *testing.T) {
+	avaxAssetID := ids.GenerateTestID()
+
+	tests := []struct {
+		name         string
+		txs          []*txs.Tx
+		txIDToRemove ids.ID
+		wantRemove   bool
+	}{
+		{
+			name:         "remove tx not in mempool - empty",
+			txIDToRemove: ids.GenerateTestID(),
+		},
+		{
+			name: "remove tx not in mempool - populated",
+			txs: []*txs.Tx{
+				{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.GenerateTestID(),
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+					TxID: ids.GenerateTestID(),
+				},
+			},
+			txIDToRemove: ids.GenerateTestID(),
+		},
+		{
+			name: "remove tx in mempool",
+			txs: []*txs.Tx{
+				{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.GenerateTestID(),
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+					TxID: ids.ID{1, 2, 3},
+				},
+			},
+			txIDToRemove: ids.ID{1, 2, 3},
+			wantRemove:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
+
+			m, err := New(
+				"",
+				gas.Dimensions{1, 1, 1, 1},
+				1_000_000,
+				avaxAssetID,
+				prometheus.NewRegistry(),
+			)
+			require.NoError(err)
+
+			for _, tx := range tt.txs {
+				require.NoError(m.Add(tx))
+			}
+
+			m.Remove(tt.txIDToRemove)
+			_, gotOk := m.Get(tt.txIDToRemove)
+			require.False(gotOk)
+		})
+	}
+}
+
+func TestMempool_RemoveConflicts(t *testing.T) {
+	avaxAssetID := ids.GenerateTestID()
+
+	tests := []struct {
+		name              string
+		txs               []*txs.Tx
+		conflictsToRemove set.Set[ids.ID]
+		wantTxs           []ids.ID
+	}{
+		{
+			name: "remove conflicts not in mempool - empty",
+		},
+		{
+			name: "remove conflicts not in mempool - populated",
+			txs: []*txs.Tx{
+				{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.ID{1},
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+					TxID: ids.ID{2},
+				},
+				{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.ID{3},
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+					TxID: ids.ID{4},
+				},
+			},
+			conflictsToRemove: set.Of[ids.ID](
+				ids.ID{1}.Prefix(0),
+				ids.ID{3}.Prefix(0),
+			),
+		},
+		{
+			name: "remove conflicts not in mempool - populated",
+			txs: []*txs.Tx{
+				{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.ID{1},
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+					TxID: ids.ID{2},
+				},
+				{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.ID{3},
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+					TxID: ids.ID{4},
+				},
+			},
+			conflictsToRemove: set.Of[ids.ID](ids.ID{1}.Prefix(0)),
+			wantTxs:           []ids.ID{{4}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
+
+			m, err := New(
+				"",
+				gas.Dimensions{1, 1, 1, 1},
+				1_000_000,
+				avaxAssetID,
+				prometheus.NewRegistry(),
+			)
+			require.NoError(err)
+
+			for _, tx := range tt.txs {
+				require.NoError(m.Add(tx))
+			}
+
+			m.RemoveConflicts(tt.conflictsToRemove)
+
+			require.Equal(len(tt.wantTxs), m.Len())
+			for _, wantTxID := range tt.wantTxs {
+				_, ok := m.Get(wantTxID)
+				require.True(ok)
+			}
 		})
 	}
 }

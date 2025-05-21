@@ -76,9 +76,8 @@ func NewManager(
 			validators: validatorManager,
 		},
 		rejector: &rejector{
-			backend:         backend,
-			toEngine:        toEngine,
-			addTxsToMempool: !txExecutorBackend.Config.PartialSyncPrimaryNetwork,
+			backend:  backend,
+			toEngine: toEngine,
 		},
 		preferred:         lastAccepted,
 		txExecutorBackend: txExecutorBackend,

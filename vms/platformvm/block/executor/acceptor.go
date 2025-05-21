@@ -204,6 +204,10 @@ func (a *acceptor) proposalBlock(b block.Block, blockType string) {
 	blkID := b.ID()
 	a.backend.lastAccepted = blkID
 
+	for _, tx := range b.Txs() {
+		a.Mempool.RemoveConflicts(tx.InputIDs())
+	}
+
 	a.ctx.Log.Trace(
 		"accepted block",
 		zap.String("blockType", blockType),
@@ -249,6 +253,10 @@ func (a *acceptor) standardBlock(b block.Block, blockType string) error {
 
 	if onAcceptFunc := blkState.onAcceptFunc; onAcceptFunc != nil {
 		onAcceptFunc()
+	}
+
+	for _, tx := range b.Txs() {
+		a.Mempool.RemoveConflicts(tx.InputIDs())
 	}
 
 	a.ctx.Log.Trace(

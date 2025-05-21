@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/cache/lru"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/heap"
+	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/utils/setmap"
 	"github.com/ava-labs/avalanchego/vms/components/gas"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
@@ -200,13 +201,11 @@ func (m *Mempool) Get(txID ids.ID) (*txs.Tx, bool) {
 	return tx.Tx, true
 }
 
-// TODO support removal by inputs
-// TODO remove conflicts of tx
-func (m *Mempool) Remove(tx *txs.Tx) {
+func (m *Mempool) Remove(txID ids.ID) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	m.remove(tx.ID())
+	m.remove(txID)
 }
 
 func (m *Mempool) remove(txID ids.ID) {
@@ -221,6 +220,15 @@ func (m *Mempool) remove(txID ids.ID) {
 	m.currentGas -= heapTx.gasUsed
 
 	m.updateMetrics()
+}
+
+func (m *Mempool) RemoveConflicts(utxos set.Set[ids.ID]) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	for _, removed := range m.consumedUTXOs.DeleteOverlapping(utxos) {
+		m.remove(removed.Key)
+	}
 }
 
 func (m *Mempool) Peek() (*txs.Tx, bool) {
