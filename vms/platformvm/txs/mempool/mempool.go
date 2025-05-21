@@ -24,6 +24,7 @@ import (
 var (
 	ErrGasCapacityExceeded = errors.New("gas capacity exceeded")
 	errMissingConsumedAVAX = errors.New("missing consumed avax")
+	errNoGasUsed           = errors.New("no gas used")
 )
 
 type heapTx struct {
@@ -276,6 +277,10 @@ func (m *Mempool) meter(tx txs.UnsignedTx) (gas.Dimensions, gas.Gas, error) {
 	g, err := c.ToGas(m.weights)
 	if err != nil {
 		return gas.Dimensions{}, 0, err
+	}
+
+	if g == 0 {
+		return gas.Dimensions{}, 0, errNoGasUsed
 	}
 
 	return c, g, nil

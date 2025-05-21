@@ -183,6 +183,31 @@ func TestMempoolAdd(t *testing.T) {
 			},
 			wantErr: errMissingConsumedAVAX,
 		},
+		{
+			name:    "dropped - no gas",
+			weights: gas.Dimensions{},
+			tx: &txs.Tx{
+				Unsigned: &txs.BaseTx{
+					BaseTx: avax.BaseTx{
+						Ins: []*avax.TransferableInput{
+							{
+								UTXOID: avax.UTXOID{
+									TxID: ids.ID{4, 5, 6},
+								},
+								Asset: avax.Asset{
+									ID: avaxAssetID,
+								},
+								In: &secp256k1fx.TransferInput{
+									Amt: 10,
+								},
+							},
+						},
+					},
+				},
+				TxID: ids.ID{1},
+			},
+			wantErr: errNoGasUsed,
+		},
 		// TODO no conflicts are stopped
 		{
 			name: "conflict - lower paying tx conflicts",
