@@ -669,7 +669,6 @@ func (e *standardTxExecutor) BaseTx(tx *txs.BaseTx) error {
 		return err
 	}
 
-	//TODO use additional fees
 	ins, outs, _, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
