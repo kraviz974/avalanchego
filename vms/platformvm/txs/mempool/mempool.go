@@ -17,13 +17,13 @@ import (
 	"github.com/ava-labs/avalanchego/vms/components/gas"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs/fee"
+	"github.com/ava-labs/avalanchego/vms/platformvm/utxo"
 	"github.com/ava-labs/avalanchego/vms/txs/mempool"
 )
 
 var (
 	ErrGasCapacityExceeded = errors.New("gas capacity exceeded")
-
-	_ txs.Visitor = (*utxoGetter)(nil)
+	errMissingConsumedAVAX = errors.New("missing consumed avax")
 )
 
 type heapTx struct {
@@ -95,14 +95,35 @@ func (m *Mempool) Add(tx *txs.Tx) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx.Unsigned)
+	if err != nil {
+		return fmt.Errorf("failed to get utxos: %w", err)
+	}
+
+	consumedAVAX := uint64(0)
+	for _, utxo := range ins {
+		if utxo.AssetID() != m.avaxAssetID {
+			continue
+		}
+
+		consumedAVAX += utxo.In.Amount()
+	}
+
+	if consumedAVAX == 0 {
+		return errMissingConsumedAVAX
+	}
+
+	for _, utxo := range outs {
+		if utxo.AssetID() != m.avaxAssetID {
+			continue
+		}
+
+		producedAVAX += utxo.Out.Amount()
+	}
+
 	_, gasUsed, err := m.meter(tx.Unsigned)
 	if err != nil {
 		return fmt.Errorf("failed to meter tx: %w", err)
-	}
-
-	consumedAVAX, producedAVAX, err := getUTXOs(m.avaxAssetID, tx.Unsigned)
-	if err != nil {
-		return fmt.Errorf("failed to get utxos: %w", err)
 	}
 
 	heapTx := heapTx{
@@ -117,6 +138,10 @@ func (m *Mempool) Add(tx *txs.Tx) error {
 		if err := m.tryEvictTx(next, heapTx); err != nil {
 			return err
 		}
+	}
+
+	if m.consumedUTXOs.HasOverlap(tx.InputIDs()) {
+		return mempool.ErrConflictsWithOtherTx
 	}
 
 	m.maxHeap.Push(tx.TxID, heapTx)
@@ -135,13 +160,13 @@ func (m *Mempool) Add(tx *txs.Tx) error {
 func (m *Mempool) tryEvictTx(next gas.Gas, tx heapTx) error {
 	_, low, ok := m.minHeap.Peek()
 	if !ok {
-		return nil
+		return ErrGasCapacityExceeded
 	}
 
 	// Check if evicting the lowest paying tx would give us enough capacity to fit
 	// this tx
 	if low.GasPrice < tx.GasPrice && next-low.gasUsed <= m.gasCapacity {
-		// Check to see if this conflicts with any remaining txs
+		// Check to see if this conflicts with any remaining txs after we evict
 		evictedUTXOs, _ := m.consumedUTXOs.DeleteKey(low.TxID)
 		if m.consumedUTXOs.HasOverlap(tx.InputIDs()) {
 			m.consumedUTXOs.Put(low.TxID, evictedUTXOs)
@@ -257,164 +282,4 @@ func (m *Mempool) meter(tx txs.UnsignedTx) (gas.Dimensions, gas.Gas, error) {
 	}
 
 	return c, g, nil
-}
-
-func getUTXOs(avaxAssetID ids.ID, tx txs.UnsignedTx) (uint64, uint64, error) {
-	u := utxoGetter{AVAXAssetID: avaxAssetID}
-
-	if err := tx.Visit(&u); err != nil {
-		return 0, 0, err
-	}
-
-	return u.Consumed, u.Produced, nil
-}
-
-type utxoGetter struct {
-	AVAXAssetID ids.ID
-	Consumed    uint64
-	Produced    uint64
-}
-
-func (*utxoGetter) AddValidatorTx(*txs.AddValidatorTx) error {
-	return errors.New("unsupported tx type")
-}
-
-func (u *utxoGetter) AddSubnetValidatorTx(tx *txs.AddSubnetValidatorTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (*utxoGetter) AddDelegatorTx(*txs.AddDelegatorTx) error {
-	return errors.New("unsupported tx type")
-}
-
-func (u *utxoGetter) CreateChainTx(tx *txs.CreateChainTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) CreateSubnetTx(tx *txs.CreateSubnetTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) ImportTx(tx *txs.ImportTx) error {
-	for _, i := range tx.ImportedInputs {
-		if i.AssetID() != u.AVAXAssetID {
-			continue
-		}
-
-		u.Consumed += i.In.Amount()
-	}
-
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) ExportTx(tx *txs.ExportTx) error {
-	for _, i := range tx.ExportedOutputs {
-		if i.AssetID() != u.AVAXAssetID {
-			continue
-		}
-
-		u.Produced += i.Out.Amount()
-	}
-
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (*utxoGetter) AdvanceTimeTx(*txs.AdvanceTimeTx) error {
-	return errors.New("unsupported tx type")
-}
-
-func (*utxoGetter) RewardValidatorTx(*txs.RewardValidatorTx) error {
-	return errors.New("unsupported tx type")
-}
-
-func (u *utxoGetter) RemoveSubnetValidatorTx(tx *txs.RemoveSubnetValidatorTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (*utxoGetter) TransformSubnetTx(*txs.TransformSubnetTx) error {
-	return errors.New("unsupported tx type")
-}
-
-func (u *utxoGetter) AddPermissionlessValidatorTx(tx *txs.AddPermissionlessValidatorTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) AddPermissionlessDelegatorTx(tx *txs.AddPermissionlessDelegatorTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) TransferSubnetOwnershipTx(tx *txs.TransferSubnetOwnershipTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) BaseTx(tx *txs.BaseTx) error {
-	u.getUTXOs(*tx)
-
-	return nil
-}
-
-func (u *utxoGetter) ConvertSubnetToL1Tx(tx *txs.ConvertSubnetToL1Tx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) RegisterL1ValidatorTx(tx *txs.RegisterL1ValidatorTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) SetL1ValidatorWeightTx(tx *txs.SetL1ValidatorWeightTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) IncreaseL1ValidatorBalanceTx(tx *txs.IncreaseL1ValidatorBalanceTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) DisableL1ValidatorTx(tx *txs.DisableL1ValidatorTx) error {
-	u.getUTXOs(tx.BaseTx)
-
-	return nil
-}
-
-func (u *utxoGetter) getUTXOs(tx txs.BaseTx) {
-	for _, i := range tx.Ins {
-		if i.AssetID() != u.AVAXAssetID {
-			continue
-		}
-
-		u.Consumed += i.In.Amount()
-	}
-
-	for _, i := range tx.Outs {
-		if i.AssetID() != u.AVAXAssetID {
-			continue
-		}
-
-		u.Produced += i.Out.Amount()
-	}
 }

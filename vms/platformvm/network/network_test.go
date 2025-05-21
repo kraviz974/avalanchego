@@ -61,6 +61,8 @@ func (t testTxVerifier) VerifyTx(*txs.Tx) error {
 }
 
 func TestNetworkIssueTxFromRPC(t *testing.T) {
+	avaxAssetID := ids.GenerateTestID()
+
 	type test struct {
 		name          string
 		mempool       *pmempool.Mempool
@@ -76,19 +78,55 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 			mempool: func() *pmempool.Mempool {
 				mempool, err := pmempool.New(
 					"",
-					gas.Dimensions{},
+					gas.Dimensions{1, 1, 1, 1},
 					1_000_000,
-					ids.ID{},
+					avaxAssetID,
 					prometheus.NewRegistry(),
 				)
 				require.NoError(t, err)
-				require.NoError(t, mempool.Add(&txs.Tx{Unsigned: &txs.BaseTx{}}))
+				require.NoError(t, mempool.Add(&txs.Tx{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.ID{1, 2, 3},
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+				}))
 				return mempool
 			}(),
 			appSenderFunc: func(ctrl *gomock.Controller) common.AppSender {
 				return commonmock.NewSender(ctrl)
 			},
-			tx:          &txs.Tx{Unsigned: &txs.BaseTx{}},
+			tx: &txs.Tx{
+				Unsigned: &txs.BaseTx{
+					BaseTx: avax.BaseTx{
+						Ins: []*avax.TransferableInput{
+							{
+								UTXOID: avax.UTXOID{
+									TxID: ids.ID{1, 2, 3},
+								},
+								Asset: avax.Asset{
+									ID: avaxAssetID,
+								},
+								In: &secp256k1fx.TransferInput{
+									Amt: 1,
+								},
+							},
+						},
+					},
+				},
+			},
 			expectedErr: mempool.ErrDuplicateTx,
 		},
 		{
@@ -96,9 +134,9 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 			mempool: func() *pmempool.Mempool {
 				mempool, err := pmempool.New(
 					"",
-					gas.Dimensions{},
+					gas.Dimensions{1, 1, 1, 1},
 					1_000_000,
-					ids.ID{},
+					avaxAssetID,
 					prometheus.NewRegistry(),
 				)
 				require.NoError(t, err)
@@ -109,7 +147,25 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 				// Shouldn't gossip the tx
 				return commonmock.NewSender(ctrl)
 			},
-			tx:          &txs.Tx{Unsigned: &txs.BaseTx{}},
+			tx: &txs.Tx{
+				Unsigned: &txs.BaseTx{
+					BaseTx: avax.BaseTx{
+						Ins: []*avax.TransferableInput{
+							{
+								UTXOID: avax.UTXOID{
+									TxID: ids.ID{1, 2, 3},
+								},
+								Asset: avax.Asset{
+									ID: avaxAssetID,
+								},
+								In: &secp256k1fx.TransferInput{
+									Amt: 1,
+								},
+							},
+						},
+					},
+				},
+			},
 			expectedErr: errTest,
 		},
 		{
@@ -117,9 +173,9 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 			mempool: func() *pmempool.Mempool {
 				mempool, err := pmempool.New(
 					"",
-					gas.Dimensions{},
+					gas.Dimensions{1, 1, 1, 1},
 					1_000_000,
-					ids.ID{},
+					avaxAssetID,
 					prometheus.NewRegistry(),
 				)
 				require.NoError(t, err)
@@ -130,7 +186,25 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 				// Shouldn't gossip the tx
 				return commonmock.NewSender(ctrl)
 			},
-			tx:          &txs.Tx{Unsigned: &txs.BaseTx{}},
+			tx: &txs.Tx{
+				Unsigned: &txs.BaseTx{
+					BaseTx: avax.BaseTx{
+						Ins: []*avax.TransferableInput{
+							{
+								UTXOID: avax.UTXOID{
+									TxID: ids.ID{1, 2, 3},
+								},
+								Asset: avax.Asset{
+									ID: avaxAssetID,
+								},
+								In: &secp256k1fx.TransferInput{
+									Amt: 1,
+								},
+							},
+						},
+					},
+				},
+			},
 			expectedErr: errTest,
 		},
 		{
@@ -138,9 +212,9 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 			mempool: func() *pmempool.Mempool {
 				mempool, err := pmempool.New(
 					"",
-					gas.Dimensions{},
+					gas.Dimensions{1, 1, 1, 1},
 					1_000_000,
-					ids.ID{},
+					avaxAssetID,
 					prometheus.NewRegistry(),
 				)
 				require.NoError(t, err)
@@ -150,8 +224,12 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 						BaseTx: avax.BaseTx{
 							Ins: []*avax.TransferableInput{
 								{
-									UTXOID: avax.UTXOID{},
-									In:     &secp256k1fx.TransferInput{},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
 								},
 							},
 						},
@@ -171,8 +249,12 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 						BaseTx: avax.BaseTx{
 							Ins: []*avax.TransferableInput{
 								{
-									UTXOID: avax.UTXOID{},
-									In:     &secp256k1fx.TransferInput{},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
 								},
 							},
 						},
@@ -190,7 +272,7 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 					"",
 					gas.Dimensions{1, 1, 1, 1},
 					0,
-					ids.ID{},
+					avaxAssetID,
 					prometheus.NewRegistry(),
 				)
 				require.NoError(t, err)
@@ -202,7 +284,25 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 				return commonmock.NewSender(ctrl)
 			},
 			tx: func() *txs.Tx {
-				return &txs.Tx{Unsigned: &txs.BaseTx{BaseTx: avax.BaseTx{}}}
+				return &txs.Tx{
+					Unsigned: &txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								{
+									UTXOID: avax.UTXOID{
+										TxID: ids.ID{1, 2, 3},
+									},
+									Asset: avax.Asset{
+										ID: avaxAssetID,
+									},
+									In: &secp256k1fx.TransferInput{
+										Amt: 1,
+									},
+								},
+							},
+						},
+					},
+				}
 			}(),
 			expectedErr: pmempool.ErrGasCapacityExceeded,
 		},
@@ -211,9 +311,9 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 			mempool: func() *pmempool.Mempool {
 				mempool, err := pmempool.New(
 					"",
-					gas.Dimensions{},
+					gas.Dimensions{1, 1, 1, 1},
 					1_000_000,
-					ids.ID{},
+					avaxAssetID,
 					prometheus.NewRegistry(),
 				)
 				require.NoError(t, err)
@@ -224,7 +324,25 @@ func TestNetworkIssueTxFromRPC(t *testing.T) {
 				appSender.EXPECT().SendAppGossip(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 				return appSender
 			},
-			tx:          &txs.Tx{Unsigned: &txs.BaseTx{}},
+			tx: &txs.Tx{
+				Unsigned: &txs.BaseTx{
+					BaseTx: avax.BaseTx{
+						Ins: []*avax.TransferableInput{
+							{
+								UTXOID: avax.UTXOID{
+									TxID: ids.ID{1, 2, 3},
+								},
+								Asset: avax.Asset{
+									ID: avaxAssetID,
+								},
+								In: &secp256k1fx.TransferInput{
+									Amt: 1,
+								},
+							},
+						},
+					},
+				},
+			},
 			expectedErr: nil,
 		},
 	}

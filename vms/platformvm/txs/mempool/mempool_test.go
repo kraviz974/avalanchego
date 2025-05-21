@@ -16,6 +16,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/components/gas"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
+	"github.com/ava-labs/avalanchego/vms/platformvm/utxo"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/vms/txs/mempool"
 )
@@ -161,13 +162,34 @@ func TestMempoolAdd(t *testing.T) {
 		wantErr        error
 		wantTxIDs      []ids.ID
 	}{
+		{
+			name: "dropped - AdvanceTimeTx",
+			tx: &txs.Tx{
+				Unsigned: &txs.AdvanceTimeTx{},
+			},
+			wantErr: utxo.ErrUnsupportedTxType,
+		},
+		{
+			name: "dropped - RewardValidatorTx",
+			tx: &txs.Tx{
+				Unsigned: &txs.RewardValidatorTx{},
+			},
+			wantErr: utxo.ErrUnsupportedTxType,
+		},
+		{
+			name: "dropped - no input AVAX",
+			tx: &txs.Tx{
+				Unsigned: &txs.BaseTx{BaseTx: avax.BaseTx{}},
+			},
+			wantErr: errMissingConsumedAVAX,
+		},
 		// TODO no conflicts are stopped
 		{
 			name: "conflict - lower paying tx conflicts",
 			weights: gas.Dimensions{
 				gas.Bandwidth: 1,
 			},
-			maxGasCapacity: 100,
+			maxGasCapacity: 200,
 			prevTxs: []*txs.Tx{
 				{
 					Unsigned: &txs.BaseTx{
@@ -220,7 +242,7 @@ func TestMempoolAdd(t *testing.T) {
 			weights: gas.Dimensions{
 				gas.Bandwidth: 1,
 			},
-			maxGasCapacity: 100,
+			maxGasCapacity: 200,
 			prevTxs: []*txs.Tx{
 				{
 					Unsigned: &txs.BaseTx{

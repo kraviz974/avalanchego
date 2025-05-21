@@ -32,6 +32,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/timer/mockable"
 	"github.com/ava-labs/avalanchego/utils/units"
+	"github.com/ava-labs/avalanchego/vms/components/gas"
 	"github.com/ava-labs/avalanchego/vms/platformvm/config"
 	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
 	"github.com/ava-labs/avalanchego/vms/platformvm/genesis/genesistest"
@@ -146,7 +147,7 @@ func newEnvironment(t *testing.T, f upgradetest.Fork) *environment { //nolint:un
 		"mempool",
 		res.config.DynamicFeeConfig.Weights,
 		1_000_000,
-		ids.ID{},
+		res.ctx.AVAXAssetID,
 		registerer,
 	)
 	require.NoError(err)
@@ -189,6 +190,10 @@ func newEnvironment(t *testing.T, f upgradetest.Fork) *environment { //nolint:un
 
 	res.blkManager.SetPreference(genesisID)
 	addSubnet(t, res)
+
+	// Dynamic fees require us to build blocks with a non-zero difference in time
+	// from the last block
+	res.clk.Set(res.clk.Time().Add(time.Second))
 
 	t.Cleanup(func() {
 		res.ctx.Lock.Lock()
@@ -283,11 +288,19 @@ func defaultConfig(f upgradetest.Fork) *config.Internal {
 		Chains:                 chains.TestManager,
 		UptimeLockedCalculator: uptime.NewLockedCalculator(),
 		Validators:             validators.NewManager(),
-		MinValidatorStake:      5 * units.MilliAvax,
-		MaxValidatorStake:      500 * units.MilliAvax,
-		MinDelegatorStake:      1 * units.MilliAvax,
-		MinStakeDuration:       defaultMinStakingDuration,
-		MaxStakeDuration:       defaultMaxStakingDuration,
+		DynamicFeeConfig: gas.Config{
+			Weights:                  gas.Dimensions{1, 1, 1, 1},
+			MaxCapacity:              1_000_000,
+			MaxPerSecond:             1_000_000,
+			TargetPerSecond:          100,
+			MinPrice:                 1,
+			ExcessConversionConstant: 1,
+		},
+		MinValidatorStake: 5 * units.MilliAvax,
+		MaxValidatorStake: 500 * units.MilliAvax,
+		MinDelegatorStake: 1 * units.MilliAvax,
+		MinStakeDuration:  defaultMinStakingDuration,
+		MaxStakeDuration:  defaultMaxStakingDuration,
 		RewardConfig: reward.Config{
 			MaxConsumptionRate: .12 * reward.PercentDenominator,
 			MinConsumptionRate: .10 * reward.PercentDenominator,
