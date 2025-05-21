@@ -243,7 +243,7 @@ func (v *verifier) ApricotAtomicBlock(b *block.ApricotAtomicBlock) error {
 		return err
 	}
 
-	v.Mempool.Remove(b.Tx)
+	v.Mempool.RemoveConflicts(b.Tx.InputIDs())
 
 	blkID := b.ID()
 	v.blkIDToState[blkID] = &blockState{
