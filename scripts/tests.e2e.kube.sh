@@ -23,7 +23,4 @@ else
   XSVM_IMAGE="${XSVM_IMAGE}" AVALANCHEGO_IMAGE="${AVALANCHEGO_IMAGE}" bash -x ./scripts/build_xsvm_image.sh
 fi
 
-# Avoid having the test suite start local collectors since collection is only required from the
-# nodes running in the kind cluster
-TMPNET_START_COLLECTORS="" PATH="${PWD}/bin:$PATH" \
-  bash -x ./scripts/tests.e2e.sh --runtime=kube --kube-image="${XSVM_IMAGE}" "$@"
+bash -x ./scripts/tests.e2e.sh --runtime=kube --kube-image="${XSVM_IMAGE}" "$@"
