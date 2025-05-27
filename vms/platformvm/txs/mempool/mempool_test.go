@@ -4,6 +4,7 @@
 package mempool
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -732,6 +733,51 @@ func TestMempool_RemoveConflicts(t *testing.T) {
 				_, ok := m.Get(wantTxID)
 				require.True(ok)
 			}
+		})
+	}
+}
+
+func TestMempool_Drop(t *testing.T) {
+	errFoo := errors.New("foo")
+
+	tests := []struct {
+		name       string
+		droppedTxs map[ids.ID]error
+		tx         ids.ID
+		wantErr    error
+	}{
+		{
+			name: "tx is dropped",
+			droppedTxs: map[ids.ID]error{
+				ids.Empty: errFoo,
+			},
+			tx:      ids.Empty,
+			wantErr: errFoo,
+		},
+		{
+			name: "tx not dropped",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
+
+			m, err := New(
+				"",
+				gas.Dimensions{1, 1, 1, 1},
+				1_000_000,
+				ids.Empty,
+				prometheus.NewRegistry(),
+			)
+			require.NoError(err)
+
+			for txID, dropReason := range tt.droppedTxs {
+				m.MarkDropped(txID, dropReason)
+			}
+
+			err = m.GetDropReason(tt.tx)
+			require.ErrorIs(err, tt.wantErr)
 		})
 	}
 }
