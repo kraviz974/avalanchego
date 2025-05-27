@@ -154,7 +154,7 @@ func newEnvironment(t *testing.T, ctrl *gomock.Controller, f upgradetest.Fork) *
 		"mempool",
 		res.config.DynamicFeeConfig.Weights,
 		1_000_000,
-		ids.ID{},
+		res.ctx.AVAXAssetID,
 		registerer,
 	)
 	if err != nil {
