@@ -123,7 +123,7 @@ func (m *Mempool) Add(tx *txs.Tx) error {
 		producedAVAX += utxo.Out.Amount()
 	}
 
-	_, gasUsed, err := m.meter(tx.Unsigned)
+	gasUsed, err := m.meter(tx.Unsigned)
 	if err != nil {
 		return fmt.Errorf("failed to meter tx: %w", err)
 	}
@@ -276,20 +276,20 @@ func (m *Mempool) Len() int {
 	return m.maxHeap.Len()
 }
 
-func (m *Mempool) meter(tx txs.UnsignedTx) (gas.Dimensions, gas.Gas, error) {
+func (m *Mempool) meter(tx txs.UnsignedTx) (gas.Gas, error) {
 	c, err := fee.TxComplexity(tx)
 	if err != nil {
-		return gas.Dimensions{}, 0, err
+		return 0, err
 	}
 
 	g, err := c.ToGas(m.weights)
 	if err != nil {
-		return gas.Dimensions{}, 0, err
+		return 0, err
 	}
 
 	if g == 0 {
-		return gas.Dimensions{}, 0, errNoGasUsed
+		return 0, errNoGasUsed
 	}
 
-	return c, g, nil
+	return g, nil
 }
