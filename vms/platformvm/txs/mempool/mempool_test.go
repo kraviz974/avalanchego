@@ -272,11 +272,6 @@ func TestMempoolAdd(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
 
-			linearCodec := linearcodec.NewDefault()
-			require.NoError(linearCodec.RegisterType(&secp256k1fx.TransferOutput{}))
-			codecManager := codec.NewDefaultManager()
-			require.NoError(codecManager.RegisterCodec(0, linearCodec))
-
 			m, err := New(
 				"",
 				tt.weights,
