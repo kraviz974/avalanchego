@@ -208,7 +208,7 @@ func (e *standardTxExecutor) CreateChainTx(tx *txs.CreateChainTx) error {
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -225,7 +225,7 @@ func (e *standardTxExecutor) CreateChainTx(tx *txs.CreateChainTx) error {
 		outs,
 		baseTxCreds,
 		map[ids.ID]uint64{
-			e.backend.Ctx.AVAXAssetID: fee,
+			e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return err
@@ -262,7 +262,7 @@ func (e *standardTxExecutor) CreateSubnetTx(tx *txs.CreateSubnetTx) error {
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -279,7 +279,7 @@ func (e *standardTxExecutor) CreateSubnetTx(tx *txs.CreateSubnetTx) error {
 		outs,
 		e.tx.Creds,
 		map[ids.ID]uint64{
-			e.backend.Ctx.AVAXAssetID: fee,
+			e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return err
@@ -347,7 +347,7 @@ func (e *standardTxExecutor) ImportTx(tx *txs.ImportTx) error {
 			utxos[i+len(tx.Ins)] = utxo
 		}
 
-		ins, outs, _, err := utxo.GetInputOutputs(tx)
+		ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 		if err != nil {
 			return fmt.Errorf("failed to get utxos: %w", err)
 		}
@@ -364,7 +364,7 @@ func (e *standardTxExecutor) ImportTx(tx *txs.ImportTx) error {
 			outs,
 			e.tx.Creds,
 			map[ids.ID]uint64{
-				e.backend.Ctx.AVAXAssetID: fee,
+				e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 			},
 		); err != nil {
 			return err
@@ -408,7 +408,7 @@ func (e *standardTxExecutor) ExportTx(tx *txs.ExportTx) error {
 		}
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -425,7 +425,7 @@ func (e *standardTxExecutor) ExportTx(tx *txs.ExportTx) error {
 		outs,
 		e.tx.Creds,
 		map[ids.ID]uint64{
-			e.backend.Ctx.AVAXAssetID: fee,
+			e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return fmt.Errorf("failed verifySpend: %w", err)
@@ -533,7 +533,7 @@ func (e *standardTxExecutor) TransformSubnetTx(tx *txs.TransformSubnetTx) error 
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -554,7 +554,7 @@ func (e *standardTxExecutor) TransformSubnetTx(tx *txs.TransformSubnetTx) error 
 		//            entry in this map literal from being overwritten by the
 		//            second entry.
 		map[ids.ID]uint64{
-			e.backend.Ctx.AVAXAssetID: fee,
+			e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 			tx.AssetID:                totalRewardAmount,
 		},
 	); err != nil {
@@ -669,7 +669,7 @@ func (e *standardTxExecutor) BaseTx(tx *txs.BaseTx) error {
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -686,7 +686,7 @@ func (e *standardTxExecutor) BaseTx(tx *txs.BaseTx) error {
 		outs,
 		e.tx.Creds,
 		map[ids.ID]uint64{
-			e.backend.Ctx.AVAXAssetID: fee,
+			e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return err
@@ -1009,7 +1009,7 @@ func (e *standardTxExecutor) SetL1ValidatorWeightTx(tx *txs.SetL1ValidatorWeight
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -1027,7 +1027,7 @@ func (e *standardTxExecutor) SetL1ValidatorWeightTx(tx *txs.SetL1ValidatorWeight
 		outs,
 		e.tx.Creds,
 		map[ids.ID]uint64{
-			e.backend.Ctx.AVAXAssetID: fee,
+			e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return err
@@ -1250,7 +1250,7 @@ func (e *standardTxExecutor) DisableL1ValidatorTx(tx *txs.DisableL1ValidatorTx) 
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -1268,7 +1268,7 @@ func (e *standardTxExecutor) DisableL1ValidatorTx(tx *txs.DisableL1ValidatorTx) 
 		outs,
 		baseTxCreds,
 		map[ids.ID]uint64{
-			e.backend.Ctx.AVAXAssetID: fee,
+			e.backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return err

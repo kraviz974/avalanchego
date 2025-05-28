@@ -137,7 +137,7 @@ func verifyAddValidatorTx(
 		return nil, ErrStakeTooLong
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -178,7 +178,7 @@ func verifyAddValidatorTx(
 		outs,
 		sTx.Creds,
 		map[ids.ID]uint64{
-			backend.Ctx.AVAXAssetID: fee,
+			backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrFlowCheckFailed, err)
@@ -259,7 +259,7 @@ func verifyAddSubnetValidatorTx(
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -276,7 +276,7 @@ func verifyAddSubnetValidatorTx(
 		outs,
 		baseTxCreds,
 		map[ids.ID]uint64{
-			backend.Ctx.AVAXAssetID: fee,
+			backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return fmt.Errorf("%w: %w", ErrFlowCheckFailed, err)
@@ -344,7 +344,7 @@ func verifyRemoveSubnetValidatorTx(
 		return nil, false, err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -361,7 +361,7 @@ func verifyRemoveSubnetValidatorTx(
 		outs,
 		baseTxCreds,
 		map[ids.ID]uint64{
-			backend.Ctx.AVAXAssetID: fee,
+			backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return nil, false, fmt.Errorf("%w: %w", ErrFlowCheckFailed, err)
@@ -416,7 +416,7 @@ func verifyAddDelegatorTx(
 		return nil, ErrWeightTooSmall
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -482,7 +482,7 @@ func verifyAddDelegatorTx(
 		outs,
 		sTx.Creds,
 		map[ids.ID]uint64{
-			backend.Ctx.AVAXAssetID: fee,
+			backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrFlowCheckFailed, err)
@@ -588,7 +588,7 @@ func verifyAddPermissionlessValidatorTx(
 		}
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -605,7 +605,7 @@ func verifyAddPermissionlessValidatorTx(
 		outs,
 		sTx.Creds,
 		map[ids.ID]uint64{
-			backend.Ctx.AVAXAssetID: fee,
+			backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return fmt.Errorf("%w: %w", ErrFlowCheckFailed, err)
@@ -736,7 +736,7 @@ func verifyAddPermissionlessDelegatorTx(
 		}
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -753,7 +753,7 @@ func verifyAddPermissionlessDelegatorTx(
 		outs,
 		sTx.Creds,
 		map[ids.ID]uint64{
-			backend.Ctx.AVAXAssetID: fee,
+			backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return fmt.Errorf("%w: %w", ErrFlowCheckFailed, err)
@@ -801,7 +801,7 @@ func verifyTransferSubnetOwnershipTx(
 		return err
 	}
 
-	ins, outs, _, err := utxo.GetInputOutputs(tx)
+	ins, outs, producedAVAX, err := utxo.GetInputOutputs(tx)
 	if err != nil {
 		return fmt.Errorf("failed to get utxos: %w", err)
 	}
@@ -818,7 +818,7 @@ func verifyTransferSubnetOwnershipTx(
 		outs,
 		baseTxCreds,
 		map[ids.ID]uint64{
-			backend.Ctx.AVAXAssetID: fee,
+			backend.Ctx.AVAXAssetID: fee + producedAVAX,
 		},
 	); err != nil {
 		return fmt.Errorf("%w: %w", ErrFlowCheckFailed, err)
