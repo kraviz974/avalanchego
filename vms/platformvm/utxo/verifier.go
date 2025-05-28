@@ -458,7 +458,12 @@ func (i *inputOutputGetter) ConvertSubnetToL1Tx(tx *txs.ConvertSubnetToL1Tx) err
 	i.getUTXOs(tx.BaseTx)
 
 	for _, v := range tx.Validators {
-		i.ProducedAVAX += v.Balance
+		producedAVAX, err := math.Add(i.ProducedAVAX, v.Balance)
+		if err != nil {
+			return fmt.Errorf("failed to add validator balance: %w", err)
+		}
+
+		i.ProducedAVAX = producedAVAX
 	}
 
 	return nil
@@ -469,7 +474,13 @@ func (i *inputOutputGetter) ConvertSubnetToL1Tx(tx *txs.ConvertSubnetToL1Tx) err
 // validator
 func (i *inputOutputGetter) RegisterL1ValidatorTx(tx *txs.RegisterL1ValidatorTx) error {
 	i.getUTXOs(tx.BaseTx)
-	i.ProducedAVAX += tx.Balance
+
+	producedAVAX, err := math.Add(i.ProducedAVAX, tx.Balance)
+	if err != nil {
+		return fmt.Errorf("failed to add validator balance: %w", err)
+	}
+
+	i.ProducedAVAX = producedAVAX
 
 	return nil
 }
@@ -484,7 +495,13 @@ func (i *inputOutputGetter) SetL1ValidatorWeightTx(tx *txs.SetL1ValidatorWeightT
 // the fee payer must have enough input AVAX to cover the increase in balance
 func (i *inputOutputGetter) IncreaseL1ValidatorBalanceTx(tx *txs.IncreaseL1ValidatorBalanceTx) error {
 	i.getUTXOs(tx.BaseTx)
-	i.ProducedAVAX += tx.Balance
+
+	producedAVAX, err := math.Add(i.ProducedAVAX, tx.Balance)
+	if err != nil {
+		return fmt.Errorf("failed to add validator balance: %w", err)
+	}
+
+	i.ProducedAVAX = producedAVAX
 
 	return nil
 }

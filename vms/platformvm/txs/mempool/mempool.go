@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/cache/lru"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/heap"
+	"github.com/ava-labs/avalanchego/utils/math"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/utils/setmap"
 	"github.com/ava-labs/avalanchego/vms/components/gas"
@@ -108,7 +109,10 @@ func (m *Mempool) Add(tx *txs.Tx) error {
 			continue
 		}
 
-		consumedAVAX += utxo.In.Amount()
+		consumedAVAX, err = math.Add(consumedAVAX, utxo.In.Amount())
+		if err != nil {
+			return fmt.Errorf("failed to add consumed AVAX: %w", err)
+		}
 	}
 
 	if consumedAVAX == 0 {
@@ -120,7 +124,10 @@ func (m *Mempool) Add(tx *txs.Tx) error {
 			continue
 		}
 
-		producedAVAX += utxo.Out.Amount()
+		producedAVAX, err = math.Add64(producedAVAX, utxo.Out.Amount())
+		if err != nil {
+			return fmt.Errorf("failed to add produced AVAX: %w", err)
+		}
 	}
 
 	gasUsed, err := m.meter(tx.Unsigned)

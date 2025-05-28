@@ -5,6 +5,7 @@ package mempool
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/avalanchego/codec/linearcodec"
 	"github.com/ava-labs/avalanchego/ids"
+	safemath "github.com/ava-labs/avalanchego/utils/math"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/components/gas"
@@ -22,7 +24,38 @@ import (
 	"github.com/ava-labs/avalanchego/vms/txs/mempool"
 )
 
-var avaxAssetID = ids.ID{1, 2, 3}
+var (
+	avaxAssetID = ids.ID{1, 2, 3}
+	validTx     = txs.BaseTx{
+		BaseTx: avax.BaseTx{
+			Ins: []*avax.TransferableInput{
+				newAVAXInput(ids.GenerateTestID(), 2),
+			},
+			Outs: []*avax.TransferableOutput{
+				newAVAXOutput(1),
+			},
+		},
+	}
+	invalidTxInputOverflow = txs.BaseTx{
+		BaseTx: avax.BaseTx{
+			Ins: []*avax.TransferableInput{
+				newAVAXInput(ids.GenerateTestID(), math.MaxUint64),
+				newAVAXInput(ids.GenerateTestID(), math.MaxUint64),
+			},
+		},
+	}
+	invalidTxOutputOverflow = txs.BaseTx{
+		BaseTx: avax.BaseTx{
+			Ins: []*avax.TransferableInput{
+				newAVAXInput(ids.GenerateTestID(), 10),
+			},
+			Outs: []*avax.TransferableOutput{
+				newAVAXOutput(math.MaxUint64),
+				newAVAXOutput(math.MaxUint64),
+			},
+		},
+	}
+)
 
 func newAVAXInput(txID ids.ID, amount uint64) *avax.TransferableInput {
 	return &avax.TransferableInput{
@@ -33,6 +66,17 @@ func newAVAXInput(txID ids.ID, amount uint64) *avax.TransferableInput {
 			ID: avaxAssetID,
 		},
 		In: &secp256k1fx.TransferInput{
+			Amt: amount,
+		},
+	}
+}
+
+func newAVAXOutput(amount uint64) *avax.TransferableOutput {
+	return &avax.TransferableOutput{
+		Asset: avax.Asset{
+			ID: avaxAssetID,
+		},
+		Out: &secp256k1fx.TransferOutput{
 			Amt: amount,
 		},
 	}
@@ -49,14 +93,7 @@ func newTx(
 
 	if outputAmount > 0 {
 		tx.Outs = []*avax.TransferableOutput{
-			{
-				Asset: avax.Asset{
-					ID: avaxAssetID,
-				},
-				Out: &secp256k1fx.TransferOutput{
-					Amt: outputAmount,
-				},
-			},
+			newAVAXOutput(outputAmount),
 		}
 	}
 
@@ -111,6 +148,7 @@ func TestMempoolOrdering(t *testing.T) {
 	require.Equal(lowTx, gotTx)
 }
 
+// TODO need to test happy case for everything too (??)
 func TestMempoolAdd(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -121,6 +159,377 @@ func TestMempoolAdd(t *testing.T) {
 		wantErr        error
 		wantTxIDs      []ids.ID
 	}{
+		{
+			name: "dropped - no input AVAX",
+			tx: newTx(
+				ids.GenerateTestID(),
+				[]*avax.TransferableInput{},
+				0,
+			),
+			wantErr: errMissingConsumedAVAX,
+		},
+		// TODO do this for each tx type?
+		{
+			name:    "dropped - no gas",
+			weights: gas.Dimensions{},
+			tx:      &txs.Tx{Unsigned: &validTx},
+			wantErr: errNoGasUsed,
+		},
+		{
+			name:           "dropped - AddValidatorTx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddValidatorTx{
+					BaseTx: invalidTxInputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddValidatorTx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddValidatorTx{
+					BaseTx: invalidTxOutputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddValidatorTx staked output overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddValidatorTx{
+					BaseTx: validTx,
+					StakeOuts: []*avax.TransferableOutput{
+						newAVAXOutput(math.MaxUint64),
+						newAVAXOutput(math.MaxUint64),
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddValidatorTx total produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddValidatorTx{
+					BaseTx: txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								newAVAXInput(ids.GenerateTestID(), 10),
+							},
+							Outs: []*avax.TransferableOutput{
+								newAVAXOutput(math.MaxUint64),
+							},
+						},
+					},
+					StakeOuts: []*avax.TransferableOutput{
+						newAVAXOutput(math.MaxUint64),
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddSubnetValidatorTx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddValidatorTx{
+					BaseTx: invalidTxInputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddSubnetValidatorTx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddValidatorTx{
+					BaseTx: invalidTxOutputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddDelegatorTx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddDelegatorTx{
+					BaseTx: invalidTxInputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddDelegatorTx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddDelegatorTx{
+					BaseTx: invalidTxOutputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddDelegatorTx staked output overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddDelegatorTx{
+					BaseTx: validTx,
+					StakeOuts: []*avax.TransferableOutput{
+						newAVAXOutput(math.MaxUint64),
+						newAVAXOutput(math.MaxUint64),
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - AddDelegatorTx total produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.AddDelegatorTx{
+					BaseTx: txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								newAVAXInput(ids.GenerateTestID(), 10),
+							},
+							Outs: []*avax.TransferableOutput{
+								newAVAXOutput(math.MaxUint64),
+							},
+						},
+					},
+					StakeOuts: []*avax.TransferableOutput{
+						newAVAXOutput(math.MaxUint64),
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - CreateChainTx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.CreateChainTx{
+					BaseTx: invalidTxInputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - CreateChainTx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.CreateChainTx{
+					BaseTx: invalidTxOutputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - CreateSubnetTx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.CreateSubnetTx{
+					BaseTx: invalidTxInputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - CreateSubnetTx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.CreateSubnetTx{
+					BaseTx: invalidTxOutputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ImportTx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ImportTx{
+					BaseTx: invalidTxInputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ImportTx total consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ImportTx{
+					BaseTx: txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								newAVAXInput(ids.GenerateTestID(), math.MaxUint64),
+							},
+						},
+					},
+					ImportedInputs: []*avax.TransferableInput{
+						newAVAXInput(ids.GenerateTestID(), math.MaxUint64),
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ImportTx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ImportTx{
+					BaseTx: invalidTxOutputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ExportTx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ExportTx{
+					BaseTx: invalidTxInputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ExportTx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ExportTx{
+					BaseTx: invalidTxOutputOverflow,
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ExportTx total produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ExportTx{
+					BaseTx: txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								newAVAXInput(ids.GenerateTestID(), 1),
+							},
+							Outs: []*avax.TransferableOutput{
+								newAVAXOutput(math.MaxUint64),
+							},
+						},
+					},
+					ExportedOutputs: []*avax.TransferableOutput{
+						newAVAXOutput(math.MaxUint64),
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ConvertSubnetToL1Tx consumed AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ConvertSubnetToL1Tx{
+					BaseTx:     invalidTxInputOverflow,
+					SubnetAuth: &secp256k1fx.Input{},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ConvertSubnetToL1Tx produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ConvertSubnetToL1Tx{
+					BaseTx:     invalidTxOutputOverflow,
+					SubnetAuth: &secp256k1fx.Input{},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ConvertSubnetToL1Tx validator balance overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ConvertSubnetToL1Tx{
+					BaseTx: txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								newAVAXInput(ids.GenerateTestID(), 10),
+							},
+						},
+					},
+					SubnetAuth: &secp256k1fx.Input{},
+					Validators: []*txs.ConvertSubnetToL1Validator{
+						{
+							NodeID:  []byte("foo"),
+							Weight:  100,
+							Balance: math.MaxUint,
+						},
+						{
+							NodeID:  []byte("bar"),
+							Weight:  100,
+							Balance: math.MaxUint,
+						},
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
+		{
+			name:           "dropped - ConvertSubnetToL1Tx total produced AVAX overflows",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 500,
+			tx: &txs.Tx{
+				Unsigned: &txs.ConvertSubnetToL1Tx{
+					BaseTx: txs.BaseTx{
+						BaseTx: avax.BaseTx{
+							Ins: []*avax.TransferableInput{
+								newAVAXInput(ids.GenerateTestID(), 10),
+							},
+							Outs: []*avax.TransferableOutput{
+								newAVAXOutput(math.MaxUint64),
+							},
+						},
+					},
+					SubnetAuth: &secp256k1fx.Input{},
+					Validators: []*txs.ConvertSubnetToL1Validator{
+						{
+							NodeID:  []byte("foo"),
+							Weight:  100,
+							Balance: math.MaxUint,
+						},
+					},
+				},
+			},
+			wantErr: safemath.ErrOverflow,
+		},
 		{
 			name: "dropped - AdvanceTimeTx",
 			tx: &txs.Tx{
@@ -134,25 +543,6 @@ func TestMempoolAdd(t *testing.T) {
 				Unsigned: &txs.RewardValidatorTx{},
 			},
 			wantErr: utxo.ErrUnsupportedTxType,
-		},
-		{
-			name: "dropped - no input AVAX",
-			tx: newTx(
-				ids.GenerateTestID(),
-				[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 0)},
-				0,
-			),
-			wantErr: errMissingConsumedAVAX,
-		},
-		{
-			name:    "dropped - no gas",
-			weights: gas.Dimensions{},
-			tx: newTx(
-				ids.GenerateTestID(),
-				[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 10)},
-				0,
-			),
-			wantErr: errNoGasUsed,
 		},
 		{
 			name:           "conflict - lower paying tx is not added",
@@ -442,9 +832,9 @@ func TestMempool_RemoveConflicts(t *testing.T) {
 					TxID: ids.ID{4},
 				},
 			},
-			conflictsToRemove: set.Of[ids.ID](
-				ids.ID{1}.Prefix(0),
-				ids.ID{3}.Prefix(0),
+			conflictsToRemove: set.Of(
+				ids.ID{1},
+				ids.ID{3},
 			),
 		},
 		{
@@ -491,7 +881,7 @@ func TestMempool_RemoveConflicts(t *testing.T) {
 					TxID: ids.ID{4},
 				},
 			},
-			conflictsToRemove: set.Of[ids.ID](ids.ID{1}.Prefix(0)),
+			conflictsToRemove: set.Of(ids.ID{1}),
 			wantTxs:           []ids.ID{{4}},
 		},
 	}
@@ -513,7 +903,12 @@ func TestMempool_RemoveConflicts(t *testing.T) {
 				require.NoError(m.Add(tx))
 			}
 
-			m.RemoveConflicts(tt.conflictsToRemove)
+			conflictsToRemove := set.Set[ids.ID]{}
+			for conflict := range tt.conflictsToRemove {
+				conflictsToRemove.Add(conflict.Prefix(0))
+			}
+
+			m.RemoveConflicts(conflictsToRemove)
 
 			require.Equal(len(tt.wantTxs), m.Len())
 			for _, wantTxID := range tt.wantTxs {
