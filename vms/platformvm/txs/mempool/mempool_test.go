@@ -22,13 +22,57 @@ import (
 	"github.com/ava-labs/avalanchego/vms/txs/mempool"
 )
 
+var avaxAssetID = ids.ID{1, 2, 3}
+
+func newAVAXInput(txID ids.ID, amount uint64) *avax.TransferableInput {
+	return &avax.TransferableInput{
+		UTXOID: avax.UTXOID{
+			TxID: txID,
+		},
+		Asset: avax.Asset{
+			ID: avaxAssetID,
+		},
+		In: &secp256k1fx.TransferInput{
+			Amt: amount,
+		},
+	}
+}
+
+func newTx(
+	txID ids.ID,
+	inputs []*avax.TransferableInput,
+	outputAmount uint64,
+) *txs.Tx {
+	tx := avax.BaseTx{
+		Ins: inputs,
+	}
+
+	if outputAmount > 0 {
+		tx.Outs = []*avax.TransferableOutput{
+			{
+				Asset: avax.Asset{
+					ID: avaxAssetID,
+				},
+				Out: &secp256k1fx.TransferOutput{
+					Amt: outputAmount,
+				},
+			},
+		}
+	}
+
+	return &txs.Tx{
+		Unsigned: &txs.BaseTx{
+			BaseTx: tx,
+		},
+		TxID: txID,
+	}
+}
+
 // Txs should be prioritized by highest gas price during after Etna
 func TestMempoolOrdering(t *testing.T) {
 	require := require.New(t)
 
-	avaxAssetID := ids.GenerateTestID()
 	weights := gas.Dimensions{gas.Bandwidth: 1}
-
 	linearCodec := linearcodec.NewDefault()
 	require.NoError(linearCodec.RegisterType(&secp256k1fx.TransferOutput{}))
 	codecManager := codec.NewDefaultManager()
@@ -43,68 +87,18 @@ func TestMempoolOrdering(t *testing.T) {
 	)
 	require.NoError(err)
 
-	lowTx := &txs.Tx{
-		Unsigned: &txs.BaseTx{
-			BaseTx: avax.BaseTx{
-				Ins: []*avax.TransferableInput{
-					{
-						UTXOID: avax.UTXOID{
-							TxID: ids.GenerateTestID(),
-						},
-						Asset: avax.Asset{
-							ID: avaxAssetID,
-						},
-						In: &secp256k1fx.TransferInput{
-							Amt: 5,
-						},
-					},
-				},
-				Outs: []*avax.TransferableOutput{
-					{
-						Asset: avax.Asset{
-							ID: avaxAssetID,
-						},
-						Out: &secp256k1fx.TransferOutput{
-							Amt: 4,
-						},
-					},
-				},
-			},
-		},
-		TxID: ids.GenerateTestID(),
-	}
+	lowTx := newTx(
+		ids.GenerateTestID(),
+		[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 5)},
+		4,
+	)
 	require.NoError(m.Add(lowTx))
 
-	highTx := &txs.Tx{
-		Unsigned: &txs.BaseTx{
-			BaseTx: avax.BaseTx{
-				Ins: []*avax.TransferableInput{
-					{
-						UTXOID: avax.UTXOID{
-							TxID: ids.GenerateTestID(),
-						},
-						Asset: avax.Asset{
-							ID: avaxAssetID,
-						},
-						In: &secp256k1fx.TransferInput{
-							Amt: 5,
-						},
-					},
-				},
-				Outs: []*avax.TransferableOutput{
-					{
-						Asset: avax.Asset{
-							ID: avaxAssetID,
-						},
-						Out: &secp256k1fx.TransferOutput{
-							Amt: 1,
-						},
-					},
-				},
-			},
-		},
-		TxID: ids.GenerateTestID(),
-	}
+	highTx := newTx(
+		ids.GenerateTestID(),
+		[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 5)},
+		1,
+	)
 	require.NoError(m.Add(highTx))
 
 	gotTx, ok := m.Peek()
@@ -118,8 +112,6 @@ func TestMempoolOrdering(t *testing.T) {
 }
 
 func TestMempoolAdd(t *testing.T) {
-	avaxAssetID := ids.GenerateTestID()
-
 	tests := []struct {
 		name           string
 		weights        gas.Dimensions
@@ -145,329 +137,133 @@ func TestMempoolAdd(t *testing.T) {
 		},
 		{
 			name: "dropped - no input AVAX",
-			tx: &txs.Tx{
-				Unsigned: &txs.BaseTx{BaseTx: avax.BaseTx{}},
-			},
+			tx: newTx(
+				ids.GenerateTestID(),
+				[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 0)},
+				0,
+			),
 			wantErr: errMissingConsumedAVAX,
 		},
 		{
 			name:    "dropped - no gas",
 			weights: gas.Dimensions{},
-			tx: &txs.Tx{
-				Unsigned: &txs.BaseTx{
-					BaseTx: avax.BaseTx{
-						Ins: []*avax.TransferableInput{
-							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.GenerateTestID(),
-								},
-								Asset: avax.Asset{
-									ID: avaxAssetID,
-								},
-								In: &secp256k1fx.TransferInput{
-									Amt: 10,
-								},
-							},
-						},
-					},
-				},
-				TxID: ids.GenerateTestID(),
-			},
+			tx: newTx(
+				ids.GenerateTestID(),
+				[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 10)},
+				0,
+			),
 			wantErr: errNoGasUsed,
 		},
 		{
-			name: "conflict - lower paying tx is not added",
-			weights: gas.Dimensions{
-				gas.Bandwidth: 1,
-			},
+			name:           "conflict - lower paying tx is not added",
+			weights:        gas.Dimensions{1, 1, 1, 1},
 			maxGasCapacity: 200,
 			prevTxs: []*txs.Tx{
-				{
-					Unsigned: &txs.BaseTx{
-						BaseTx: avax.BaseTx{
-							Ins: []*avax.TransferableInput{
-								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.ID{1, 2, 3},
-									},
-									Asset: avax.Asset{
-										ID: avaxAssetID,
-									},
-									In: &secp256k1fx.TransferInput{
-										Amt: 2,
-									},
-								},
-							},
-						},
-					},
-					TxID: ids.ID{0},
-				},
+				newTx(
+					ids.ID{1},
+					[]*avax.TransferableInput{newAVAXInput(ids.Empty, 2)},
+					0,
+				),
 			},
-			tx: &txs.Tx{
-				Unsigned: &txs.BaseTx{
-					BaseTx: avax.BaseTx{
-						Ins: []*avax.TransferableInput{
-							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
-								Asset: avax.Asset{
-									ID: avaxAssetID,
-								},
-								In: &secp256k1fx.TransferInput{
-									Amt: 1,
-								},
-							},
-						},
-					},
-				},
-				TxID: ids.GenerateTestID(),
-			},
+			tx: newTx(
+				ids.ID{2},
+				[]*avax.TransferableInput{newAVAXInput(ids.Empty, 1)},
+				0,
+			),
 			wantErr: ErrGasCapacityExceeded,
-			wantTxIDs: []ids.ID{
-				{0},
-			},
-		},
-		{
-			name: "conflict - equal paying tx is not added",
-			weights: gas.Dimensions{
-				gas.Bandwidth: 1,
-			},
-			maxGasCapacity: 200,
-			prevTxs: []*txs.Tx{
-				{
-					Unsigned: &txs.BaseTx{
-						BaseTx: avax.BaseTx{
-							Ins: []*avax.TransferableInput{
-								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.ID{1, 2, 3},
-									},
-									Asset: avax.Asset{
-										ID: avaxAssetID,
-									},
-									In: &secp256k1fx.TransferInput{
-										Amt: 5,
-									},
-								},
-							},
-						},
-					},
-					TxID: ids.ID{0},
-				},
-			},
-			tx: &txs.Tx{
-				Unsigned: &txs.BaseTx{
-					BaseTx: avax.BaseTx{
-						Ins: []*avax.TransferableInput{
-							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
-								Asset: avax.Asset{
-									ID: avaxAssetID,
-								},
-								In: &secp256k1fx.TransferInput{
-									Amt: 5,
-								},
-							},
-						},
-					},
-				},
-				TxID: ids.GenerateTestID(),
-			},
-			wantErr: ErrGasCapacityExceeded,
-			wantTxIDs: []ids.ID{
-				{0},
-			},
-		},
-		{
-			name: "conflict - higher paying tx is added",
-			weights: gas.Dimensions{
-				gas.Bandwidth: 1,
-			},
-			maxGasCapacity: 200,
-			prevTxs: []*txs.Tx{
-				{
-					Unsigned: &txs.BaseTx{
-						BaseTx: avax.BaseTx{
-							Ins: []*avax.TransferableInput{
-								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.ID{1, 2, 3},
-									},
-									Asset: avax.Asset{
-										ID: avaxAssetID,
-									},
-									In: &secp256k1fx.TransferInput{
-										Amt: 5,
-									},
-								},
-							},
-						},
-					},
-					TxID: ids.ID{0},
-				},
-			},
-			tx: &txs.Tx{
-				Unsigned: &txs.BaseTx{
-					BaseTx: avax.BaseTx{
-						Ins: []*avax.TransferableInput{
-							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
-								Asset: avax.Asset{
-									ID: avaxAssetID,
-								},
-								In: &secp256k1fx.TransferInput{
-									Amt: 10,
-								},
-							},
-						},
-					},
-				},
-				TxID: ids.ID{1},
-			},
 			wantTxIDs: []ids.ID{
 				{1},
 			},
 		},
 		{
-			name: "evict - higher paying tx without conflicts is added",
-			weights: gas.Dimensions{
-				gas.Bandwidth: 1,
-			},
+			name:           "conflict - equal paying tx is not added",
+			weights:        gas.Dimensions{1, 1, 1, 1},
 			maxGasCapacity: 200,
 			prevTxs: []*txs.Tx{
-				{
-					Unsigned: &txs.BaseTx{
-						BaseTx: avax.BaseTx{
-							Ins: []*avax.TransferableInput{
-								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.GenerateTestID(),
-									},
-									Asset: avax.Asset{
-										ID: avaxAssetID,
-									},
-									In: &secp256k1fx.TransferInput{
-										Amt: 5,
-									},
-								},
-							},
-						},
-					},
-					TxID: ids.ID{0},
-				},
+				newTx(
+					ids.ID{1},
+					[]*avax.TransferableInput{newAVAXInput(ids.Empty, 2)},
+					0,
+				),
 			},
-			tx: &txs.Tx{
-				Unsigned: &txs.BaseTx{
-					BaseTx: avax.BaseTx{
-						Ins: []*avax.TransferableInput{
-							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.GenerateTestID(),
-								},
-								Asset: avax.Asset{
-									ID: avaxAssetID,
-								},
-								In: &secp256k1fx.TransferInput{
-									Amt: 10,
-								},
-							},
-						},
-					},
-				},
-				TxID: ids.ID{1},
-			},
+			tx: newTx(
+				ids.ID{2},
+				[]*avax.TransferableInput{newAVAXInput(ids.Empty, 2)},
+				0,
+			),
+			wantErr: ErrGasCapacityExceeded,
 			wantTxIDs: []ids.ID{
 				{1},
 			},
 		},
 		{
-			name: "evict - higher paying tx conflicts with multiple txs",
-			weights: gas.Dimensions{
-				gas.Bandwidth: 1,
+			name:           "conflict - higher paying tx is added",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 200,
+			prevTxs: []*txs.Tx{
+				newTx(
+					ids.ID{1},
+					[]*avax.TransferableInput{newAVAXInput(ids.Empty, 1)},
+					0,
+				),
 			},
+			tx: newTx(
+				ids.ID{2},
+				[]*avax.TransferableInput{newAVAXInput(ids.Empty, 10)},
+				0,
+			),
+			wantTxIDs: []ids.ID{
+				{2},
+			},
+		},
+		{
+			name:           "evict - higher paying tx without conflicts is added",
+			weights:        gas.Dimensions{1, 1, 1, 1},
+			maxGasCapacity: 200,
+			prevTxs: []*txs.Tx{
+				newTx(
+					ids.ID{1},
+					[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 5)},
+					0,
+				),
+			},
+			tx: newTx(
+				ids.ID{2},
+				[]*avax.TransferableInput{newAVAXInput(ids.GenerateTestID(), 10)},
+				0,
+			),
+			wantTxIDs: []ids.ID{
+				{2},
+			},
+		},
+		{
+			name:           "evict - higher paying tx conflicts with multiple txs",
+			weights:        gas.Dimensions{1, 1, 1, 1},
 			maxGasCapacity: 500,
 			prevTxs: []*txs.Tx{
-				{
-					Unsigned: &txs.BaseTx{
-						BaseTx: avax.BaseTx{
-							Ins: []*avax.TransferableInput{
-								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.ID{1, 2, 3},
-									},
-									Asset: avax.Asset{
-										ID: avaxAssetID,
-									},
-									In: &secp256k1fx.TransferInput{
-										Amt: 1,
-									},
-								},
-							},
-						},
-					},
-					TxID: ids.ID{0},
-				},
-				{
-					Unsigned: &txs.BaseTx{
-						BaseTx: avax.BaseTx{
-							Ins: []*avax.TransferableInput{
-								{
-									UTXOID: avax.UTXOID{
-										TxID: ids.ID{4, 5, 6},
-									},
-									Asset: avax.Asset{
-										ID: avaxAssetID,
-									},
-									In: &secp256k1fx.TransferInput{
-										Amt: 10,
-									},
-								},
-							},
-						},
-					},
-					TxID: ids.ID{1},
-				},
+				newTx(
+					ids.ID{1},
+					[]*avax.TransferableInput{newAVAXInput(ids.ID{1, 2, 3}, 1)},
+					0,
+				),
+				newTx(
+					ids.ID{2},
+					[]*avax.TransferableInput{newAVAXInput(ids.ID{4, 5, 6}, 10)},
+					0,
+				),
 			},
-			tx: &txs.Tx{
-				Unsigned: &txs.BaseTx{
-					BaseTx: avax.BaseTx{
-						Ins: []*avax.TransferableInput{
-							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{1, 2, 3},
-								},
-								Asset: avax.Asset{
-									ID: avaxAssetID,
-								},
-								In: &secp256k1fx.TransferInput{
-									Amt: 2,
-								},
-							},
-							{
-								UTXOID: avax.UTXOID{
-									TxID: ids.ID{4, 5, 6},
-								},
-								Asset: avax.Asset{
-									ID: avaxAssetID,
-								},
-								In: &secp256k1fx.TransferInput{
-									Amt: 2,
-								},
-							},
-						},
-					},
+			tx: newTx(
+				ids.ID{3},
+				[]*avax.TransferableInput{
+					newAVAXInput(ids.ID{1, 2, 3}, 2),
+					newAVAXInput(ids.ID{4, 5, 6}, 2),
 				},
-				TxID: ids.ID{2},
-			},
+				0,
+			),
 			wantErr: mempool.ErrConflictsWithOtherTx,
 			wantTxIDs: []ids.ID{
-				{0},
 				{1},
+				{2},
 			},
 		},
 	}
@@ -508,8 +304,6 @@ func TestMempoolAdd(t *testing.T) {
 }
 
 func TestMempool_Remove(t *testing.T) {
-	avaxAssetID := ids.GenerateTestID()
-
 	tests := []struct {
 		name         string
 		txs          []*txs.Tx
@@ -600,8 +394,6 @@ func TestMempool_Remove(t *testing.T) {
 }
 
 func TestMempool_RemoveConflicts(t *testing.T) {
-	avaxAssetID := ids.GenerateTestID()
-
 	tests := []struct {
 		name              string
 		txs               []*txs.Tx
