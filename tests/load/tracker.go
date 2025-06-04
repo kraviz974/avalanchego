@@ -4,94 +4,106 @@
 package load
 
 import (
+	"errors"
 	"sync"
-	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const namespace = "load"
 
-// Tracker keeps track of the status of transactions.
-// This is thread-safe and can be called in parallel by the issuer(s) or orchestrator.
-type Tracker[T TxID] struct {
-	lock sync.RWMutex
+type Metrics struct {
+	txsIssuedCounter    prometheus.Counter
+	txsConfirmedCounter prometheus.Counter
 
-	outstandingTxs map[T]time.Time
+	totalGasUsedCounter prometheus.Counter
+
+	txIssuanceLatency     prometheus.Histogram
+	txConfirmationLatency prometheus.Histogram
+}
+
+func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
+	m := &Metrics{
+		txsIssuedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "txs_issued",
+			Help:      "Number of transactions issued",
+		}),
+		txsConfirmedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "txs_confirmed",
+			Help:      "Number of transactionsconfirmed",
+		}),
+		totalGasUsedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "total_gas_used",
+			Help:      "Sum of gas used for all confirmed transactions",
+		}),
+		txIssuanceLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "tx_issuance_latency",
+			Help:      "Latency of issued transactions",
+		}),
+		txConfirmationLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "tx_confirmation_latecy",
+			Help:      "Latency of confirmed transactions",
+		}),
+	}
+
+	if err := errors.Join(
+		registry.Register(m.txsIssuedCounter),
+		registry.Register(m.txsConfirmedCounter),
+		registry.Register(m.totalGasUsedCounter),
+		registry.Register(m.txIssuanceLatency),
+		registry.Register(m.txConfirmationLatency),
+	); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+type Tracker struct {
+	lock sync.RWMutex
 
 	txsIssued    uint64
 	txsConfirmed uint64
-	txsFailed    uint64
+
+	totalGasUsed uint64
 
 	metrics *Metrics
 }
 
-// NewTracker returns a new Tracker instance which records metrics for the number
-// of transactions issued, confirmed, and failed. It also tracks the latency of
-// transactions.
-func NewTracker[T TxID](metrics *Metrics) *Tracker[T] {
-	return &Tracker[T]{
-		outstandingTxs: make(map[T]time.Time),
-		metrics:        metrics,
-	}
+func NewTracker(metrics *Metrics) *Tracker {
+	return &Tracker{metrics: metrics}
 }
 
-// GetObservedConfirmed returns the number of transactions that the tracker has
-// confirmed were accepted.
-func (t *Tracker[_]) GetObservedConfirmed() uint64 {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
+func (g *Tracker) LogIssuance(i IssuanceReceipt) {
+	g.lock.Lock()
+	defer g.lock.Unlock()
 
-	return t.txsConfirmed
+	g.txsIssued++
+
+	g.metrics.txsIssuedCounter.Add(1)
+	g.metrics.txIssuanceLatency.Observe(float64(i.Duration))
 }
 
-// GetObservedFailed returns the number of transactions that the tracker has
-// confirmed failed.
-func (t *Tracker[_]) GetObservedFailed() uint64 {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
+func (g *Tracker) LogConfirmation(c ConfirmationReceipt) {
+	g.lock.Lock()
+	defer g.lock.Unlock()
 
-	return t.txsFailed
+	g.txsConfirmed++
+	g.totalGasUsed += c.Receipt.GasUsed
+
+	g.metrics.txsConfirmedCounter.Add(1)
+	g.metrics.txConfirmationLatency.Observe(float64(c.TotalDuration))
+	g.metrics.totalGasUsedCounter.Add(float64(c.Receipt.GasUsed))
 }
 
-// GetObservedIssued returns the number of transactions that the tracker has
-// confirmed were issued.
-func (t *Tracker[_]) GetObservedIssued() uint64 {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
+func (g *Tracker) TotalGasUsed() uint64 {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
 
-	return t.txsIssued
-}
-
-// Issue records a transaction that was submitted, but whose final status is
-// not yet known.
-func (t *Tracker[T]) Issue(txID T) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	t.outstandingTxs[txID] = time.Now()
-	t.txsIssued++
-	t.metrics.IncIssuedTx()
-}
-
-// ObserveConfirmed records a transaction that was confirmed.
-func (t *Tracker[T]) ObserveConfirmed(txID T) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	startTime := t.outstandingTxs[txID]
-	delete(t.outstandingTxs, txID)
-
-	t.txsConfirmed++
-	t.metrics.RecordConfirmedTx(float64(time.Since(startTime).Milliseconds()))
-}
-
-// ObserveFailed records a transaction that failed (e.g. expired)
-func (t *Tracker[T]) ObserveFailed(txID T) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	startTime := t.outstandingTxs[txID]
-	delete(t.outstandingTxs, txID)
-
-	t.txsFailed++
-	t.metrics.RecordFailedTx(float64(time.Since(startTime).Milliseconds()))
+	return g.totalGasUsed
 }
