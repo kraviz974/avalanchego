@@ -1,7 +1,7 @@
 package simplex
 
 import (
-	"encoding/binary"
+	"encoding/asn1"
 	"fmt"
 	"simplex"
 
@@ -10,16 +10,18 @@ import (
 )
 
 var (
-	simplexLabel = []byte("<simplex>")
+	errSignatureVerificationFailed = fmt.Errorf("signature verification failed")
 )
 
+type  SignFunc func(msg []byte) (*bls.Signature, error)
 // BLSSigner signs messages encoded with the provided ChainID and NetworkID
 // using the SignBLS function.
 type BLSSigner struct {
 	chainID  ids.ID
 	subnetID ids.ID
-	signBLS  func(msg []byte) (*bls.Signature, error) // should we pass in a verifier function into BLSVerifier?
-	nodeID   ids.NodeID
+	// signBLS is passed in because we support both software and hardware BLS signing.
+	signBLS SignFunc
+	nodeID  ids.NodeID
 }
 
 type BLSVerifier struct {
@@ -30,48 +32,44 @@ type BLSVerifier struct {
 
 func NewBLSAuth(config *Config) (BLSSigner, BLSVerifier) {
 	return BLSSigner{
-			chainID:  config.Ctx.ChainID,
-			subnetID: config.Ctx.SubnetID,
-			nodeID:   config.Ctx.NodeID,
-			signBLS:  config.SignBLS,
-		}, BLSVerifier{
-			nodeID2PK: make(map[ids.NodeID]bls.PublicKey),
-			subnetID:  ids.Empty,
-			chainID:   ids.Empty,
-		}
+		chainID:  config.Ctx.ChainID,
+		subnetID: config.Ctx.SubnetID,
+		nodeID:   config.Ctx.NodeID,
+		signBLS:  config.SignBLS,
+	}, createVerifier(config)
 }
 
-// Sign signs the given message using BLS signature scheme.
-// It encodes the message to sign with the simplex label, chain ID, and subnet ID,
-// Returns the signature as a byte slice prefixed with the node ID.
+// Sign returns a signature on the given message using BLS signature scheme.
+// It encodes the message to sign with the chain ID, and subnet ID,
 func (s *BLSSigner) Sign(message []byte) ([]byte, error) {
-	message2Sign := encodeMessageToSign(message, s.chainID, s.subnetID)
+	message2Sign, err := encodeMessageToSign(message, s.chainID, s.subnetID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode message to sign: %w", err)
+	}
+
 	sig, err := s.signBLS(message2Sign)
 	if err != nil {
 		return nil, err
 	}
 
 	sigBytes := bls.SignatureToBytes(sig)
-
-	buff := make([]byte, ids.NodeIDLen+len(sigBytes))
-	copy(buff, s.nodeID[:])
-	copy(buff[len(s.nodeID):], sigBytes)
-
 	return sigBytes, nil
 }
 
-// encodesMessageToSign returns a byte slice [simplexLabel][chainID][networkID][message length][message].
-func encodeMessageToSign(message []byte, chainID ids.ID, networkID ids.ID) []byte {
-	message2Sign := make([]byte, len(message)+len(simplexLabel)+ids.IDLen+ids.IDLen+4)
-	msgLenBuff := make([]byte, 4)
-	binary.BigEndian.PutUint32(msgLenBuff, uint32(len(message)))
+type encodedSimplexMessage struct {
+	Message  []byte
+	ChainID  []byte
+	SubnetID []byte
+}
 
-	copy(message2Sign, simplexLabel)
-	copy(message2Sign[len(simplexLabel):], chainID[:])
-	copy(message2Sign[len(simplexLabel)+ids.IDLen:], networkID[:])
-	copy(message2Sign[len(simplexLabel)+ids.IDLen+ids.IDLen:], msgLenBuff)
-	copy(message2Sign[len(simplexLabel)+ids.IDLen+ids.IDLen+4:], message)
-	return message2Sign
+// encodesMessageToSign returns a byte slice [simplexLabel][chainID][networkID][message length][message].
+func encodeMessageToSign(message []byte, chainID ids.ID, subnetID ids.ID) ([]byte, error) {
+	encodedSimplexMessage := encodedSimplexMessage{
+		Message:  message,
+		ChainID:  chainID[:],
+		SubnetID: subnetID[:],
+	}
+	return asn1.Marshal(encodedSimplexMessage)
 }
 
 func (v BLSVerifier) Verify(message []byte, signature []byte, signer simplex.NodeID) error {
@@ -82,18 +80,23 @@ func (v BLSVerifier) Verify(message []byte, signature []byte, signer simplex.Nod
 	key := ids.NodeID(signer)
 	pk, exists := v.nodeID2PK[key]
 	if !exists {
-		return fmt.Errorf("signer %x is not found in the membership set", signer)
+		return fmt.Errorf("signer %x is not found in the membership set", key)
 	}
+
+	fmt.Println("exists!")
 
 	sig, err := bls.SignatureFromBytes(signature)
 	if err != nil {
 		return fmt.Errorf("failed to parse signature: %w", err)
 	}
 
-	message2Verify := encodeMessageToSign(message, v.chainID, v.subnetID)
+	message2Verify, err := encodeMessageToSign(message, v.chainID, v.subnetID)
+	if err != nil {
+		return fmt.Errorf("failed to encode message to verify: %w", err)
+	}
 
 	if !bls.Verify(&pk, sig, message2Verify) {
-		return fmt.Errorf("signature verification failed")
+		return errSignatureVerificationFailed
 	}
 
 	return nil
@@ -112,7 +115,6 @@ func createVerifier(config *Config) BLSVerifier {
 		if !ok {
 			continue
 		}
-
 		verifier.nodeID2PK[node] = *validator.PublicKey
 	}
 	return verifier

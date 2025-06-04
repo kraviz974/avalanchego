@@ -4,12 +4,8 @@
 package simplex
 
 import (
-	"time"
-
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/message"
-	"github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/engine/snowman/block"
 	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
@@ -21,32 +17,20 @@ type ValidatorInfo interface {
 	GetValidator(subnetID ids.ID, nodeID ids.NodeID) (*validators.Validator, bool)
 }
 
-type ConsensusParams struct {
-	MaxProposalWait    time.Duration
-	MaxRebroadcastWait time.Duration
-}
-
-// Config wraps all the parameters needed for a snowman engine
+// Config wraps all the parameters needed for a simplex engine
 type Config struct {
-	// Things i've been through
 	Ctx         SimplexChainContext
+	Log         logging.Logger
 	Validators  ValidatorInfo
-	VM          block.ChainVM
 	SignBLS     func(msg []byte) (*bls.Signature, error)
+	VM          block.ChainVM
 	GenesisData []byte
 
-	// things i haven't been through
-	GetServer          common.AllGetsServer
-	Sender             Sender
-	OutboundMsgBuilder message.OutboundMsgBuilder
-	DB                 database.Database
+	DB database.Database
 }
 
 type SimplexChainContext struct {
 	NodeID   ids.NodeID
 	ChainID  ids.ID
 	SubnetID ids.ID
-	Log      logging.Logger
-
-	Params ConsensusParams
 }
