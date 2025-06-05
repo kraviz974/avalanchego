@@ -14,20 +14,20 @@ import (
 )
 
 type Orchestrator struct {
-	wallets  []*Sender
+	senders  []*Sender
 	builders []Builder
 	tracker  *Tracker
 	log      logging.Logger
 }
 
 func NewOrchestrator(
-	wallets []*Sender,
+	senders []*Sender,
 	builders []Builder,
 	tracker *Tracker,
 	log logging.Logger,
 ) *Orchestrator {
 	return &Orchestrator{
-		wallets:  wallets,
+		senders:  senders,
 		builders: builders,
 		tracker:  tracker,
 		log:      log,
@@ -46,7 +46,7 @@ func (g *Orchestrator) Run(ctx context.Context) error {
 
 	eg, cctx := errgroup.WithContext(ctx)
 
-	for i := range g.wallets {
+	for i := range g.senders {
 		eg.Go(func() error {
 			for {
 				select {
@@ -55,7 +55,7 @@ func (g *Orchestrator) Run(ctx context.Context) error {
 				default:
 				}
 
-				if err := g.wallets[i].SendTx(
+				if err := g.senders[i].SendTx(
 					ctx,
 					g.builders[i],
 					WithContext(cctx),
