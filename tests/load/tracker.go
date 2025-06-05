@@ -79,31 +79,31 @@ func NewTracker(metrics *Metrics) *Tracker {
 	return &Tracker{metrics: metrics}
 }
 
-func (g *Tracker) LogIssuance(i IssuanceReceipt) {
-	g.lock.Lock()
-	defer g.lock.Unlock()
+func (t *Tracker) LogIssuance(i IssuanceReceipt) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
 
-	g.txsIssued++
+	t.txsIssued++
 
-	g.metrics.txsIssuedCounter.Add(1)
-	g.metrics.txIssuanceLatency.Observe(float64(i.Duration))
+	t.metrics.txsIssuedCounter.Add(1)
+	t.metrics.txIssuanceLatency.Observe(float64(i.Duration))
 }
 
-func (g *Tracker) LogConfirmation(c ConfirmationReceipt) {
-	g.lock.Lock()
-	defer g.lock.Unlock()
+func (t *Tracker) LogConfirmation(c ConfirmationReceipt) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
 
-	g.txsConfirmed++
-	g.totalGasUsed += c.Receipt.GasUsed
+	t.txsConfirmed++
+	t.totalGasUsed += c.Receipt.GasUsed
 
-	g.metrics.txsConfirmedCounter.Add(1)
-	g.metrics.txConfirmationLatency.Observe(float64(c.TotalDuration))
-	g.metrics.totalGasUsedCounter.Add(float64(c.Receipt.GasUsed))
+	t.metrics.txsConfirmedCounter.Add(1)
+	t.metrics.txConfirmationLatency.Observe(float64(c.TotalDuration))
+	t.metrics.totalGasUsedCounter.Add(float64(c.Receipt.GasUsed))
 }
 
-func (g *Tracker) TotalGasUsed() uint64 {
-	g.lock.RLock()
-	defer g.lock.RUnlock()
+func (t *Tracker) TotalGasUsed() uint64 {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
 
-	return g.totalGasUsed
+	return t.totalGasUsed
 }

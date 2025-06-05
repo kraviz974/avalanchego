@@ -34,19 +34,19 @@ func NewOrchestrator(
 	}
 }
 
-func (g *Orchestrator) Run(ctx context.Context) error {
-	g.log.Debug("starting run")
+func (o *Orchestrator) Run(ctx context.Context) error {
+	o.log.Debug("starting run")
 	issuanceF := func(i IssuanceReceipt) {
-		g.tracker.LogIssuance(i)
+		o.tracker.LogIssuance(i)
 	}
 
 	confirmationF := func(c ConfirmationReceipt) {
-		g.tracker.LogConfirmation(c)
+		o.tracker.LogConfirmation(c)
 	}
 
 	eg, cctx := errgroup.WithContext(ctx)
 
-	for i := range g.senders {
+	for i := range o.senders {
 		eg.Go(func() error {
 			for {
 				select {
@@ -55,9 +55,9 @@ func (g *Orchestrator) Run(ctx context.Context) error {
 				default:
 				}
 
-				if err := g.senders[i].SendTx(
+				if err := o.senders[i].SendTx(
 					ctx,
-					g.builders[i],
+					o.builders[i],
 					WithContext(cctx),
 					WithPingFrequency(500*time.Millisecond),
 					WithIssuanceHandler(issuanceF),
@@ -72,7 +72,7 @@ func (g *Orchestrator) Run(ctx context.Context) error {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
-	prevTotalGasUsed := g.tracker.TotalGasUsed()
+	prevTotalGasUsed := o.tracker.TotalGasUsed()
 	prevTime := time.Now()
 
 	for {
@@ -82,11 +82,11 @@ func (g *Orchestrator) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 
-		currTotalGasUsed := g.tracker.TotalGasUsed()
+		currTotalGasUsed := o.tracker.TotalGasUsed()
 		currTime := time.Now()
 
 		gps := computeTPS(prevTotalGasUsed, currTotalGasUsed, currTime.Sub(prevTime))
-		g.log.Info("stats", zap.Uint64("gps", gps))
+		o.log.Info("stats", zap.Uint64("gps", gps))
 
 		prevTime = currTime
 		prevTotalGasUsed = currTotalGasUsed

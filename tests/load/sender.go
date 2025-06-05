@@ -32,7 +32,7 @@ func NewSender(client *ethclient.Client) *Sender {
 	return &Sender{client: client}
 }
 
-func (w *Sender) SendTx(
+func (s *Sender) SendTx(
 	ctx context.Context,
 	builder Builder,
 	ops ...Option,
@@ -45,7 +45,7 @@ func (w *Sender) SendTx(
 		return err
 	}
 
-	if err := w.client.SendTransaction(ctx, tx); err != nil {
+	if err := s.client.SendTransaction(ctx, tx); err != nil {
 		return err
 	}
 
@@ -57,7 +57,7 @@ func (w *Sender) SendTx(
 		})
 	}
 
-	receipt, err := awaitTx(ctx, w.client, tx.Hash(), options.PingFrequency())
+	receipt, err := awaitTx(ctx, s.client, tx.Hash(), options.PingFrequency())
 	if err != nil {
 		return err
 	}
