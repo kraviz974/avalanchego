@@ -5,6 +5,7 @@ package load
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -96,7 +97,7 @@ func awaitTx(
 
 		receipt, err := client.TransactionReceipt(ctx, txHash)
 		if err != nil {
-			if err == ethereum.NotFound {
+			if errors.Is(err, ethereum.NotFound) {
 				continue
 			}
 
