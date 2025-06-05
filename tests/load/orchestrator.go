@@ -44,19 +44,19 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		o.tracker.LogConfirmation(c)
 	}
 
-	eg, cctx := errgroup.WithContext(ctx)
+	eg, childCtx := errgroup.WithContext(ctx)
 
 	for i := range o.senders {
 		eg.Go(func() error {
 			for {
 				select {
-				case <-cctx.Done():
+				case <-childCtx.Done():
 					return nil
 				default:
 				}
 
 				if err := o.senders[i].SendTx(
-					cctx,
+					childCtx,
 					o.builders[i],
 					WithPingFrequency(500*time.Millisecond),
 					WithIssuanceHandler(issuanceF),
