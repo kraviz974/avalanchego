@@ -10,8 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const namespace = "load"
-
 type Metrics struct {
 	txsIssuedCounter    prometheus.Counter
 	txsConfirmedCounter prometheus.Counter
@@ -22,7 +20,7 @@ type Metrics struct {
 	txConfirmationLatency prometheus.Histogram
 }
 
-func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
+func NewMetrics(namespace string, registry *prometheus.Registry) (*Metrics, error) {
 	m := &Metrics{
 		txsIssuedCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,

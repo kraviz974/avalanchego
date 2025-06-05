@@ -27,10 +27,11 @@ import (
 const (
 	blockchainID = "C"
 	// invariant: nodesCount >= 5
-	nodesCount     = 5
-	sendersPerNode = 1
-	sendersCount   = nodesCount * sendersPerNode
-	logPrefix      = "avalanchego-load-test"
+	nodesCount       = 5
+	sendersPerNode   = 1
+	sendersCount     = nodesCount * sendersPerNode
+	logPrefix        = "avalanchego-load-test"
+	metricsNamespace = "load"
 )
 
 var flagVars *e2e.FlagVars
@@ -64,7 +65,7 @@ func main() {
 	})
 
 	registry := prometheus.NewRegistry()
-	metrics, err := load.NewMetrics(registry)
+	metrics, err := load.NewMetrics(metricsNamespace, registry)
 	require.NoError(err, "failed to register load metrics")
 
 	metricsServer := load.NewPrometheusServer("127.0.0.1:0", registry)
