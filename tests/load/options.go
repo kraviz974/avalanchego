@@ -4,7 +4,6 @@
 package load
 
 import (
-	"context"
 	"time"
 
 	"github.com/ava-labs/libevm/core/types"
@@ -38,8 +37,6 @@ type ConfirmationReceipt struct {
 type Option func(*Options)
 
 type Options struct {
-	ctx context.Context
-
 	pingFrequency time.Duration
 
 	issuanceHandler     func(IssuanceReceipt)
