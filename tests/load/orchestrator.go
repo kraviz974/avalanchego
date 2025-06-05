@@ -7,11 +7,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 )
+
+const pingFrequency = 500 * time.Millisecond
 
 type Orchestrator struct {
 	senders  []*Sender
@@ -36,12 +39,12 @@ func NewOrchestrator(
 
 func (o *Orchestrator) Run(ctx context.Context) error {
 	o.log.Debug("starting run")
-	issuanceF := func(i IssuanceReceipt) {
-		o.tracker.LogIssuance(i)
+	issuanceF := func(issuanceDuration time.Duration) {
+		o.tracker.LogIssuance(issuanceDuration)
 	}
 
-	confirmationF := func(c ConfirmationReceipt) {
-		o.tracker.LogConfirmation(c)
+	confirmationF := func(receipt *types.Receipt, confirmationDuration time.Duration) {
+		o.tracker.LogConfirmation(receipt, confirmationDuration)
 	}
 
 	eg, childCtx := errgroup.WithContext(ctx)
@@ -58,9 +61,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 				if err := o.senders[i].SendTx(
 					childCtx,
 					o.builders[i],
-					WithPingFrequency(500*time.Millisecond),
-					WithIssuanceHandler(issuanceF),
-					WithConfirmationHandler(confirmationF),
+					pingFrequency,
+					issuanceF,
+					confirmationF,
 				); err != nil {
 					return err
 				}

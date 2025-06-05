@@ -5,7 +5,9 @@ package c
 
 import (
 	"context"
+	"time"
 
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
 	"github.com/stretchr/testify/require"
 
@@ -33,7 +35,13 @@ func TestRandomAction(
 	tc.By(
 		"sending a random tx",
 		func() {
-			require.NoError(sender.SendTx(ctx, issuer))
+			require.NoError(sender.SendTx(
+				ctx,
+				issuer,
+				500*time.Millisecond,
+				func(time.Duration) {},
+				func(*types.Receipt, time.Duration) {}),
+			)
 		},
 	)
 }

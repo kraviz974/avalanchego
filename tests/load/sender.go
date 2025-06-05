@@ -13,8 +13,6 @@ import (
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
 
-	"github.com/ava-labs/avalanchego/ids"
-
 	ethereum "github.com/ava-labs/libevm"
 )
 
@@ -34,10 +32,10 @@ func NewSender(client *ethclient.Client) *Sender {
 func (s *Sender) SendTx(
 	ctx context.Context,
 	builder Builder,
-	ops ...Option,
+	pingFrequency time.Duration,
+	issuanceHandler func(time.Duration),
+	confirmationHandler func(*types.Receipt, time.Duration),
 ) error {
-	options := NewOptions(ops)
-
 	startTime := time.Now()
 	tx, err := builder.BuildTx()
 	if err != nil {
@@ -49,29 +47,16 @@ func (s *Sender) SendTx(
 	}
 
 	issuanceDuration := time.Since(startTime)
-	if f := options.IssuanceHandler(); f != nil {
-		f(IssuanceReceipt{
-			TxID:     ids.ID(tx.Hash()),
-			Duration: issuanceDuration,
-		})
-	}
+	issuanceHandler(issuanceDuration)
 
-	receipt, err := awaitTx(ctx, s.client, tx.Hash(), options.PingFrequency())
+	receipt, err := awaitTx(ctx, s.client, tx.Hash(), pingFrequency)
 	if err != nil {
 		return err
 	}
 
-	if f := options.ConfirmationHandler(); f != nil {
-		totalDuration := time.Since(startTime)
-		confirmationDuration := totalDuration - issuanceDuration
-
-		f(ConfirmationReceipt{
-			TxID:                 ids.ID(tx.Hash()),
-			Receipt:              receipt,
-			TotalDuration:        totalDuration,
-			ConfirmationDuration: confirmationDuration,
-		})
-	}
+	totalDuration := time.Since(startTime)
+	confirmationDuration := totalDuration - issuanceDuration
+	confirmationHandler(receipt, confirmationDuration)
 
 	return nil
 }

@@ -6,7 +6,9 @@ package load
 import (
 	"errors"
 	"sync"
+	"time"
 
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -77,26 +79,26 @@ func NewTracker(metrics *Metrics) *Tracker {
 	return &Tracker{metrics: metrics}
 }
 
-func (t *Tracker) LogIssuance(i IssuanceReceipt) {
+func (t *Tracker) LogIssuance(issuanceDuration time.Duration) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
 	t.txsIssued++
 
 	t.metrics.txsIssuedCounter.Add(1)
-	t.metrics.txIssuanceLatency.Observe(float64(i.Duration))
+	t.metrics.txIssuanceLatency.Observe(float64(issuanceDuration))
 }
 
-func (t *Tracker) LogConfirmation(c ConfirmationReceipt) {
+func (t *Tracker) LogConfirmation(receipt *types.Receipt, confirmationDuration time.Duration) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
 	t.txsConfirmed++
-	t.totalGasUsed += c.Receipt.GasUsed
+	t.totalGasUsed += receipt.GasUsed
 
 	t.metrics.txsConfirmedCounter.Add(1)
-	t.metrics.txConfirmationLatency.Observe(float64(c.TotalDuration))
-	t.metrics.totalGasUsedCounter.Add(float64(c.Receipt.GasUsed))
+	t.metrics.txConfirmationLatency.Observe(float64(confirmationDuration))
+	t.metrics.totalGasUsedCounter.Add(float64(receipt.GasUsed))
 }
 
 func (t *Tracker) TotalGasUsed() uint64 {
