@@ -33,7 +33,7 @@ func TestRandomAction(
 	tc.By(
 		"sending a random tx",
 		func() {
-			require.NoError(sender.SendTx(ctx, issuer, load.WithContext(ctx)))
+			require.NoError(sender.SendTx(ctx, issuer))
 		},
 	)
 }

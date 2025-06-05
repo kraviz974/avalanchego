@@ -58,13 +58,6 @@ func (o *Options) applyOptions(ops []Option) {
 	}
 }
 
-func (o *Options) Context() context.Context {
-	if o.ctx != nil {
-		return o.ctx
-	}
-	return context.Background()
-}
-
 func (o *Options) IssuanceHandler() func(IssuanceReceipt) {
 	return o.issuanceHandler
 }
@@ -75,12 +68,6 @@ func (o *Options) ConfirmationHandler() func(ConfirmationReceipt) {
 
 func (o *Options) PingFrequency() time.Duration {
 	return o.pingFrequency
-}
-
-func WithContext(ctx context.Context) Option {
-	return func(o *Options) {
-		o.ctx = ctx
-	}
 }
 
 func WithPingFrequency(pingFrequency time.Duration) Option {

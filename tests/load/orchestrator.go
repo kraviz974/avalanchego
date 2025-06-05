@@ -56,9 +56,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 				}
 
 				if err := o.senders[i].SendTx(
-					ctx,
+					cctx,
 					o.builders[i],
-					WithContext(cctx),
 					WithPingFrequency(500*time.Millisecond),
 					WithIssuanceHandler(issuanceF),
 					WithConfirmationHandler(confirmationF),
