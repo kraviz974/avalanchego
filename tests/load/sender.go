@@ -21,8 +21,6 @@ import (
 type Builder interface {
 	// Create a valid transaction
 	BuildTx() (*types.Transaction, error)
-	// Increment the nonce of the issuer by 1
-	IncrementNonce()
 }
 
 type Sender struct {
@@ -75,7 +73,6 @@ func (s *Sender) SendTx(
 		})
 	}
 
-	builder.IncrementNonce()
 	return nil
 }
 

@@ -87,11 +87,9 @@ func (i *Issuer) BuildTx() (*types.Transaction, error) {
 		return nil, fmt.Errorf("failed to generate transaction of type %s: %w", txType.name, err)
 	}
 
-	return tx, nil
-}
-
-func (i *Issuer) IncrementNonce() {
 	i.nonce++
+
+	return tx, nil
 }
 
 func makeTxTypes(
