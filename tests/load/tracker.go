@@ -32,7 +32,7 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 		txsConfirmedCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "txs_confirmed",
-			Help:      "Number of transactionsconfirmed",
+			Help:      "Number of transactions confirmed",
 		}),
 		totalGasUsedCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
