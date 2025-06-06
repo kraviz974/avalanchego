@@ -51,6 +51,18 @@ type SimplexOutboundMessageBuilder interface {
 		blockHeader simplex.BlockHeader,
 		qc []byte,
 	) (OutboundMessage, error)
+
+	ReplicationRequest(
+		chainID ids.ID,
+		seqs []uint64,
+		latestRound uint64,
+	) (OutboundMessage, error)
+
+	VerifiedReplicationResponse(
+		chainID ids.ID,
+		data []simplex.VerifiedQuorumRound,
+		latestRound *simplex.VerifiedQuorumRound,
+	) (OutboundMessage, error)
 }
 
 func (b *outMsgBuilder) BlockProposal(
@@ -67,16 +79,7 @@ func (b *outMsgBuilder) BlockProposal(
 						BlockProposal: &p2p.BlockProposal{
 							Block: block,
 							Vote: &p2p.Vote{
-								Vote: &p2p.BlockHeader{
-									Metadata: &p2p.ProtocolMetadata{
-										Version: uint32(vote.Vote.Version),
-										Epoch:   vote.Vote.Epoch,
-										Round:   vote.Vote.Round,
-										Seq:     vote.Vote.Seq,
-										Prev:    vote.Vote.Prev[:],
-									},
-									Digest: vote.Vote.Digest[:],
-								},
+								Vote: b.simplexMetadataToP2P(vote.Vote.BlockHeader),
 								Signature: &p2p.Signature{
 									Signer: vote.Signature.Signer[:],
 									Value:  vote.Signature.Value[:],
@@ -104,16 +107,7 @@ func (b *outMsgBuilder) Vote(
 					ChainId: chainID[:],
 					Message: &p2p.Simplex_Vote{
 						Vote: &p2p.Vote{
-							Vote: &p2p.BlockHeader{
-								Metadata: &p2p.ProtocolMetadata{
-									Version: uint32(blockHeader.Version),
-									Epoch:   blockHeader.Epoch,
-									Round:   blockHeader.Round,
-									Seq:     blockHeader.Seq,
-									Prev:    blockHeader.Prev[:],
-								},
-								Digest: blockHeader.Digest[:],
-							},
+							Vote: b.simplexMetadataToP2P(blockHeader),
 							Signature: &p2p.Signature{
 								Signer: signature.Signer[:],
 								Value:  signature.Value[:],
@@ -140,13 +134,7 @@ func (b *outMsgBuilder) EmptyVote(
 					ChainId: chainID[:],
 					Message: &p2p.Simplex_EmptyVote{
 						EmptyVote: &p2p.EmptyVote{
-							Vote: &p2p.ProtocolMetadata{
-								Version: uint32(protocolMetadata.Version),
-								Epoch:   protocolMetadata.Epoch,
-								Round:   protocolMetadata.Round,
-								Seq:     protocolMetadata.Seq,
-								Prev:    protocolMetadata.Prev[:],
-							},
+							Vote: b.simplexProtocolMetadataToP2p(protocolMetadata),
 							Signature: &p2p.Signature{
 								Signer: signature.Signer[:],
 								Value:  signature.Value[:],
@@ -173,16 +161,7 @@ func (b *outMsgBuilder) FinalizeVote(
 					ChainId: chainID[:],
 					Message: &p2p.Simplex_FinalizeVote{
 						FinalizeVote: &p2p.Vote{
-							Vote: &p2p.BlockHeader{
-								Metadata: &p2p.ProtocolMetadata{
-									Version: uint32(blockHeader.Version),
-									Epoch:   blockHeader.Epoch,
-									Round:   blockHeader.Round,
-									Seq:     blockHeader.Seq,
-									Prev:    blockHeader.Prev[:],
-								},
-								Digest: blockHeader.Digest[:],
-							},
+							Vote: b.simplexMetadataToP2P(blockHeader),
 							Signature: &p2p.Signature{
 								Signer: signature.Signer[:],
 								Value:  signature.Value[:],
@@ -209,16 +188,7 @@ func (b *outMsgBuilder) Notarization(
 					ChainId: chainID[:],
 					Message: &p2p.Simplex_Notarization{
 						Notarization: &p2p.QuorumCertificate{
-							Finalization: &p2p.BlockHeader{
-								Metadata: &p2p.ProtocolMetadata{
-									Version: uint32(blockHeader.Version),
-									Epoch:   blockHeader.Epoch,
-									Round:   blockHeader.Round,
-									Seq:     blockHeader.Seq,
-									Prev:    blockHeader.Prev[:],
-								},
-								Digest: blockHeader.Digest[:],
-							},
+							Finalization:      b.simplexMetadataToP2P(blockHeader),
 							QuorumCertificate: qc,
 						},
 					},
@@ -242,13 +212,7 @@ func (b *outMsgBuilder) EmptyNotarization(
 					ChainId: chainID[:],
 					Message: &p2p.Simplex_EmptyNotarization{
 						EmptyNotarization: &p2p.EmptyNotarization{
-							EmptyVote: &p2p.ProtocolMetadata{
-								Version: uint32(protocolMetadata.Version),
-								Epoch:   protocolMetadata.Epoch,
-								Round:   protocolMetadata.Round,
-								Seq:     protocolMetadata.Seq,
-								Prev:    protocolMetadata.Prev[:],
-							},
+							EmptyVote:         b.simplexProtocolMetadataToP2p(protocolMetadata),
 							QuorumCertificate: qc,
 						},
 					},
@@ -272,16 +236,7 @@ func (b *outMsgBuilder) Finalization(
 					ChainId: chainID[:],
 					Message: &p2p.Simplex_Finalization{
 						Finalization: &p2p.QuorumCertificate{
-							Finalization: &p2p.BlockHeader{
-								Metadata: &p2p.ProtocolMetadata{
-									Version: uint32(blockHeader.Version),
-									Epoch:   blockHeader.Epoch,
-									Round:   blockHeader.Round,
-									Seq:     blockHeader.Seq,
-									Prev:    blockHeader.Prev[:],
-								},
-								Digest: blockHeader.Digest[:],
-							},
+							Finalization:      b.simplexMetadataToP2P(blockHeader),
 							QuorumCertificate: qc,
 						},
 					},
@@ -291,4 +246,100 @@ func (b *outMsgBuilder) Finalization(
 		b.compressionType,
 		false,
 	)
+}
+
+func (b *outMsgBuilder) ReplicationRequest(
+	chainID ids.ID,
+	seqs []uint64,
+	latestRound uint64,
+) (OutboundMessage, error) {
+	return b.builder.createOutbound(
+		&p2p.Message{
+			Message: &p2p.Message_Simplex{
+				Simplex: &p2p.Simplex{
+					ChainId: chainID[:],
+					Message: &p2p.Simplex_ReplicationRequest{
+						ReplicationRequest: &p2p.ReplicationRequest{
+							Seqs:        seqs,
+							LatestRound: latestRound,
+						},
+					},
+				},
+			},
+		},
+		b.compressionType,
+		false,
+	)
+}
+
+func (b *outMsgBuilder) VerifiedReplicationResponse(
+	chainID ids.ID,
+	data []simplex.VerifiedQuorumRound,
+	latestRound *simplex.VerifiedQuorumRound,
+) (OutboundMessage, error) {
+	var qrs []*p2p.QuorumRound
+	for _, qr := range data {
+		qrs = append(qrs, b.simplexQuorumRoundToP2P(&qr))
+	}
+
+	return b.builder.createOutbound(
+		&p2p.Message{
+			Message: &p2p.Message_Simplex{
+				Simplex: &p2p.Simplex{
+					ChainId: chainID[:],
+					Message: &p2p.Simplex_ReplicationResponse{
+						ReplicationResponse: &p2p.ReplicationResponse{
+							Data:        qrs,
+							LatestRound: b.simplexQuorumRoundToP2P(latestRound),
+						},
+					},
+				},
+			},
+		},
+		b.compressionType,
+		false,
+	)
+}
+
+func (b *outMsgBuilder) simplexMetadataToP2P(bh simplex.BlockHeader) *p2p.BlockHeader {
+	return &p2p.BlockHeader{
+		Metadata: b.simplexProtocolMetadataToP2p(bh.ProtocolMetadata),
+		Digest:   bh.Digest[:],
+	}
+}
+
+func (b *outMsgBuilder) simplexProtocolMetadataToP2p(md simplex.ProtocolMetadata) *p2p.ProtocolMetadata {
+	return &p2p.ProtocolMetadata{
+		Version: uint32(md.Version),
+		Epoch:   md.Epoch,
+		Round:   md.Round,
+		Seq:     md.Seq,
+		Prev:    md.Prev[:],
+	}
+}
+
+func (b *outMsgBuilder) simplexQuorumRoundToP2P(qr *simplex.VerifiedQuorumRound) *p2p.QuorumRound {
+	var p2pQR *p2p.QuorumRound
+	if qr.VerifiedBlock != nil {
+		p2pQR.Block = qr.VerifiedBlock.Bytes()
+	}
+	if qr.Notarization != nil {
+		p2pQR.Notarization = &p2p.QuorumCertificate{
+			Finalization:      b.simplexMetadataToP2P(qr.Notarization.Vote.BlockHeader),
+			QuorumCertificate: qr.Notarization.QC.Bytes(),
+		}
+	}
+	if qr.Finalization != nil {
+		p2pQR.Finalization = &p2p.QuorumCertificate{
+			Finalization:      b.simplexMetadataToP2P(qr.Finalization.Finalization.BlockHeader),
+			QuorumCertificate: qr.Finalization.QC.Bytes(),
+		}
+	}
+	if qr.EmptyNotarization != nil {
+		p2pQR.EmptyNotarization = &p2p.EmptyNotarization{
+			EmptyVote:         b.simplexProtocolMetadataToP2p(qr.EmptyNotarization.Vote.ProtocolMetadata),
+			QuorumCertificate: qr.EmptyNotarization.QC.Bytes(),
+		}
+	}
+	return p2pQR
 }

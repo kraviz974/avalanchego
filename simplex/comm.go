@@ -100,7 +100,10 @@ func (c *Comm) SendMessage(msg *simplex.Message, destination simplex.NodeID) {
 		outboundMessage, err = c.msgBuilder.EmptyNotarization(c.chainID, msg.EmptyNotarization.Vote.ProtocolMetadata, msg.EmptyNotarization.QC.Bytes())
 	case msg.Finalization != nil:
 		outboundMessage, err = c.msgBuilder.Finalization(c.chainID, msg.Finalization.Finalization.BlockHeader, msg.Finalization.QC.Bytes())
-		// TODO: create replication messages
+	case msg.ReplicationRequest != nil:
+		outboundMessage, err = c.msgBuilder.ReplicationRequest(c.chainID, msg.ReplicationRequest.Seqs, msg.ReplicationRequest.LatestRound)
+	case msg.VerifiedReplicationResponse != nil:
+		outboundMessage, err = c.msgBuilder.VerifiedReplicationResponse(c.chainID, msg.VerifiedReplicationResponse.Data, msg.VerifiedReplicationResponse.LatestRound)
 	}
 
 	if err != nil {
